@@ -56,6 +56,11 @@ pub mod storage;
 pub use runbeam_api::{
     client::RunbeamClient,
     jwt::{validate_jwt_token, extract_bearer_token, JwtClaims},
+    resources::{
+        Gateway, Service, Endpoint, Backend, Pipeline, Middleware, Transform,
+        Policy, Network, Authentication, GatewayConfiguration,
+        PaginatedResponse, ResourceResponse, PaginationLinks, PaginationMeta,
+    },
     token_storage::{save_token, load_token, clear_token, MachineToken},
     types::{ApiError, RunbeamError, AuthorizeResponse, GatewayInfo, UserInfo, TeamInfo},
 };

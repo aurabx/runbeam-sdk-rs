@@ -255,8 +255,8 @@ async fn fetch_jwks(issuer: &str) -> Result<Jwks, RunbeamError> {
 impl JwtClaims {
     /// Extract the Runbeam API base URL from the issuer claim
     ///
-    /// The `iss` claim may contain a full URL (e.g., "http://example.com/api/cli/check-login/xxx")
-    /// This method extracts just the base URL (e.g., "http://example.com")
+    /// The `iss` claim may contain a full URL (e.g., `http://example.com/api/cli/check-login/xxx`)
+    /// This method extracts just the base URL (e.g., `http://example.com`)
     pub fn api_base_url(&self) -> String {
         // Try to parse as URL and extract origin
         if let Ok(url) = url::Url::parse(&self.iss) {
@@ -441,7 +441,7 @@ pub async fn validate_jwt_token(
 
 /// Extract JWT token from Authorization header
 ///
-/// Parses the "Bearer <token>" format and returns just the token string.
+/// Parses the "Bearer TOKEN" format and returns just the token string.
 ///
 /// # Arguments
 ///

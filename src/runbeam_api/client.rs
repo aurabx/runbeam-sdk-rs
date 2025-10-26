@@ -177,6 +177,225 @@ impl RunbeamClient {
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
+
+    /// List all gateways for the authenticated team
+    ///
+    /// Returns a paginated list of gateways.
+    pub async fn list_gateways(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Gateway>, RunbeamError> {
+        let url = format!("{}/api/gateways", self.base_url);
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Get a specific gateway by ID or code
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or machine token for authentication
+    /// * `gateway_id` - The gateway ID or code
+    pub async fn get_gateway(
+        &self,
+        token: impl Into<String>,
+        gateway_id: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Gateway>, RunbeamError> {
+        let url = format!("{}/api/gateways/{}", self.base_url, gateway_id.into());
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// List all services for the authenticated team
+    ///
+    /// Returns a paginated list of services across all gateways.
+    pub async fn list_services(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Service>, RunbeamError> {
+        let url = format!("{}/api/services", self.base_url);
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Get a specific service by ID
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or machine token for authentication
+    /// * `service_id` - The service ID
+    pub async fn get_service(
+        &self,
+        token: impl Into<String>,
+        service_id: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Service>, RunbeamError> {
+        let url = format!("{}/api/services/{}", self.base_url, service_id.into());
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// List all endpoints for the authenticated team
+    pub async fn list_endpoints(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Endpoint>, RunbeamError> {
+        let url = format!("{}/api/endpoints", self.base_url);
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// List all backends for the authenticated team
+    pub async fn list_backends(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Backend>, RunbeamError> {
+        let url = format!("{}/api/backends", self.base_url);
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// List all pipelines for the authenticated team
+    pub async fn list_pipelines(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Pipeline>, RunbeamError> {
+        let url = format!("{}/api/pipelines", self.base_url);
+        
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
 }
 
 #[cfg(test)]

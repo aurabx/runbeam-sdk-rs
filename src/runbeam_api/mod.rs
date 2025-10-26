@@ -12,10 +12,12 @@
 /// 5. Harmony stores machine token locally for future API calls
 pub mod client;
 pub mod jwt;
+pub mod resources;
 pub mod token_storage;
 pub mod types;
 
 pub use client::RunbeamClient;
 pub use jwt::{validate_jwt_token, JwtClaims};
+pub use resources::*;
 pub use token_storage::{clear_token, load_token, save_token, MachineToken};
 pub use types::{ApiError, RunbeamError};
