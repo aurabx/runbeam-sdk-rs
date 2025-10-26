@@ -86,10 +86,7 @@ pub async fn save_token(
     storage: &dyn StorageBackend,
     token: &MachineToken,
 ) -> Result<(), StorageError> {
-    tracing::debug!(
-        "Saving machine token for gateway: {}",
-        token.gateway_code
-    );
+    tracing::debug!("Saving machine token for gateway: {}", token.gateway_code);
 
     // Serialize token to JSON
     let json = serde_json::to_vec_pretty(&token).map_err(|e| {

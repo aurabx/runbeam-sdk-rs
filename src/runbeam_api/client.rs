@@ -56,13 +56,22 @@ impl RunbeamClient {
 
     /// Authorize a gateway and obtain a machine-scoped token
     ///
-    /// This method exchanges a user JWT token for a machine-scoped token that
-    /// the gateway can use for autonomous API access. The machine token has
-    /// a 30-day expiry (configured server-side).
+    /// This method exchanges a user authentication token (either JWT or Laravel Sanctum)
+    /// for a machine-scoped token that the gateway can use for autonomous API access.
+    /// The machine token has a 30-day expiry (configured server-side).
+    ///
+    /// # Authentication
+    ///
+    /// This method accepts both JWT tokens and Laravel Sanctum API tokens:
+    /// - **JWT tokens**: Validated locally with RS256 signature verification (legacy behavior)
+    /// - **Sanctum tokens**: Passed directly to server for validation (format: `{id}|{token}`)
+    ///
+    /// The token is passed to the Runbeam Cloud API in both the Authorization header
+    /// and request body, where final validation and authorization occurs.
     ///
     /// # Arguments
     ///
-    /// * `user_token` - The user's JWT token from CLI authentication
+    /// * `user_token` - The user's JWT or Sanctum API token from CLI authentication
     /// * `gateway_code` - The gateway instance ID
     /// * `machine_public_key` - Optional public key for secure communication
     /// * `metadata` - Optional metadata about the gateway
@@ -79,8 +88,18 @@ impl RunbeamClient {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    ///
+    /// // Using JWT token
     /// let response = client.authorize_gateway(
     ///     "eyJhbGci...",
+    ///     "gateway-123",
+    ///     None,
+    ///     None
+    /// ).await?;
+    ///
+    /// // Using Sanctum token
+    /// let response = client.authorize_gateway(
+    ///     "1|abc123def456...",
     ///     "gateway-123",
     ///     None,
     ///     None
@@ -167,7 +186,10 @@ impl RunbeamClient {
             auth_response.expires_at
         );
 
-        tracing::debug!("Machine token length: {}", auth_response.machine_token.len());
+        tracing::debug!(
+            "Machine token length: {}",
+            auth_response.machine_token.len()
+        );
         tracing::debug!("Gateway abilities: {:?}", auth_response.abilities);
 
         Ok(auth_response)
@@ -181,12 +203,24 @@ impl RunbeamClient {
     /// List all gateways for the authenticated team
     ///
     /// Returns a paginated list of gateways.
+    ///
+    /// # Authentication
+    ///
+    /// Accepts either JWT tokens or Laravel Sanctum API tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or Sanctum API token for authentication
     pub async fn list_gateways(
         &self,
         token: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Gateway>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Gateway>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/gateways", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -197,7 +231,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -211,17 +248,25 @@ impl RunbeamClient {
 
     /// Get a specific gateway by ID or code
     ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
     /// # Arguments
     ///
-    /// * `token` - JWT or machine token for authentication
+    /// * `token` - JWT, Sanctum API token, or machine token for authentication
     /// * `gateway_id` - The gateway ID or code
     pub async fn get_gateway(
         &self,
         token: impl Into<String>,
         gateway_id: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Gateway>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Gateway>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/gateways/{}", self.base_url, gateway_id.into());
-        
+
         let response = self
             .client
             .get(&url)
@@ -232,7 +277,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -247,12 +295,24 @@ impl RunbeamClient {
     /// List all services for the authenticated team
     ///
     /// Returns a paginated list of services across all gateways.
+    ///
+    /// # Authentication
+    ///
+    /// Accepts either JWT tokens or Laravel Sanctum API tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or Sanctum API token for authentication
     pub async fn list_services(
         &self,
         token: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Service>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Service>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/services", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -263,7 +323,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -277,17 +340,25 @@ impl RunbeamClient {
 
     /// Get a specific service by ID
     ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
     /// # Arguments
     ///
-    /// * `token` - JWT or machine token for authentication
+    /// * `token` - JWT, Sanctum API token, or machine token for authentication
     /// * `service_id` - The service ID
     pub async fn get_service(
         &self,
         token: impl Into<String>,
         service_id: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Service>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Service>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/services/{}", self.base_url, service_id.into());
-        
+
         let response = self
             .client
             .get(&url)
@@ -298,7 +369,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -311,12 +385,24 @@ impl RunbeamClient {
     }
 
     /// List all endpoints for the authenticated team
+    ///
+    /// # Authentication
+    ///
+    /// Accepts either JWT tokens or Laravel Sanctum API tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or Sanctum API token for authentication
     pub async fn list_endpoints(
         &self,
         token: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Endpoint>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Endpoint>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/endpoints", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -327,7 +413,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -340,12 +429,24 @@ impl RunbeamClient {
     }
 
     /// List all backends for the authenticated team
+    ///
+    /// # Authentication
+    ///
+    /// Accepts either JWT tokens or Laravel Sanctum API tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or Sanctum API token for authentication
     pub async fn list_backends(
         &self,
         token: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Backend>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Backend>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/backends", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -356,7 +457,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -369,12 +473,24 @@ impl RunbeamClient {
     }
 
     /// List all pipelines for the authenticated team
+    ///
+    /// # Authentication
+    ///
+    /// Accepts either JWT tokens or Laravel Sanctum API tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT or Sanctum API token for authentication
     pub async fn list_pipelines(
         &self,
         token: impl Into<String>,
-    ) -> Result<crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Pipeline>, RunbeamError> {
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Pipeline>,
+        RunbeamError,
+    > {
         let url = format!("{}/api/pipelines", self.base_url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -385,7 +501,10 @@ impl RunbeamClient {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,

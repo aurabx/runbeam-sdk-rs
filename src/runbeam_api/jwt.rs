@@ -42,11 +42,12 @@ impl JwkKey {
 
         // Use jsonwebtoken's built-in from_rsa_components method
         // which handles the conversion from base64url-encoded n and e
-        DecodingKey::from_rsa_components(&self.n, &self.e)
-            .map_err(|e| RunbeamError::JwtValidation(format!(
+        DecodingKey::from_rsa_components(&self.n, &self.e).map_err(|e| {
+            RunbeamError::JwtValidation(format!(
                 "Failed to create RSA decoding key from JWK components: {}",
                 e
-            )))
+            ))
+        })
     }
 }
 
@@ -108,9 +109,9 @@ async fn get_decoding_key(
 ) -> Result<DecodingKey, RunbeamError> {
     // Try to get from cache first (read lock)
     {
-        let cache = JWKS_CACHE.read().map_err(|e| {
-            RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e))
-        })?;
+        let cache = JWKS_CACHE
+            .read()
+            .map_err(|e| RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e)))?;
 
         if let Some(cache_entry) = cache.get(issuer) {
             if !cache_entry.is_expired(cache_duration) {
@@ -130,14 +131,18 @@ async fn get_decoding_key(
 
     // Double-check with write lock: another thread might have updated the cache
     {
-        let cache = JWKS_CACHE.write().map_err(|e| {
-            RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e))
-        })?;
+        let cache = JWKS_CACHE
+            .write()
+            .map_err(|e| RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e)))?;
 
         if let Some(cache_entry) = cache.get(issuer) {
             if !cache_entry.is_expired(cache_duration) {
                 if let Some(key) = cache_entry.keys.get(kid) {
-                    tracing::debug!("JWKS cache hit after lock acquisition for issuer={}, kid={}", issuer, kid);
+                    tracing::debug!(
+                        "JWKS cache hit after lock acquisition for issuer={}, kid={}",
+                        issuer,
+                        kid
+                    );
                     return Ok(key.clone());
                 }
             }
@@ -157,30 +162,40 @@ async fn get_decoding_key(
                 keys_map.insert(jwk.kid.clone(), key);
             }
             Err(e) => {
-                tracing::warn!("Failed to convert JWK kid='{}' to decoding key: {}", jwk.kid, e);
+                tracing::warn!(
+                    "Failed to convert JWK kid='{}' to decoding key: {}",
+                    jwk.kid,
+                    e
+                );
                 // Continue processing other keys
             }
         }
     }
 
     // Find the requested key
-    let decoding_key = keys_map.get(kid)
-        .ok_or_else(|| RunbeamError::JwtValidation(format!(
-            "Key ID '{}' not found in JWKS from issuer {}",
-            kid, issuer
-        )))?
+    let decoding_key = keys_map
+        .get(kid)
+        .ok_or_else(|| {
+            RunbeamError::JwtValidation(format!(
+                "Key ID '{}' not found in JWKS from issuer {}",
+                kid, issuer
+            ))
+        })?
         .clone();
 
     // Update cache (acquire write lock again)
     {
-        let mut cache = JWKS_CACHE.write().map_err(|e| {
-            RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e))
-        })?;
+        let mut cache = JWKS_CACHE
+            .write()
+            .map_err(|e| RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e)))?;
 
-        cache.insert(issuer.to_string(), JwksCache {
-            keys: keys_map,
-            last_fetched: Instant::now(),
-        });
+        cache.insert(
+            issuer.to_string(),
+            JwksCache {
+                keys: keys_map,
+                last_fetched: Instant::now(),
+            },
+        );
     }
 
     tracing::debug!("JWKS cache updated for issuer={}", issuer);
@@ -191,9 +206,9 @@ async fn get_decoding_key(
 ///
 /// Used when token validation fails to force a cache refresh
 fn clear_jwks_cache(issuer: &str) -> Result<(), RunbeamError> {
-    let mut cache = JWKS_CACHE.write().map_err(|e| {
-        RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e))
-    })?;
+    let mut cache = JWKS_CACHE
+        .write()
+        .map_err(|e| RunbeamError::JwtValidation(format!("Cache lock poisoned: {}", e)))?;
 
     if cache.remove(issuer).is_some() {
         tracing::debug!("Cleared JWKS cache for issuer={}", issuer);
@@ -216,39 +231,40 @@ async fn fetch_jwks(issuer: &str) -> Result<Jwks, RunbeamError> {
         .build()
         .map_err(|e| RunbeamError::JwtValidation(format!("Failed to create HTTP client: {}", e)))?;
 
-    let response = client
-        .get(&jwks_url)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to fetch JWKS from {}: {}", jwks_url, e);
-            if e.is_timeout() {
-                RunbeamError::JwtValidation(format!("JWKS endpoint timeout: {}", jwks_url))
-            } else if e.is_connect() {
-                RunbeamError::JwtValidation(format!("Failed to connect to JWKS endpoint: {}", jwks_url))
-            } else {
-                RunbeamError::JwtValidation(format!("Network error fetching JWKS: {}", e))
-            }
-        })?;
+    let response = client.get(&jwks_url).send().await.map_err(|e| {
+        tracing::error!("Failed to fetch JWKS from {}: {}", jwks_url, e);
+        if e.is_timeout() {
+            RunbeamError::JwtValidation(format!("JWKS endpoint timeout: {}", jwks_url))
+        } else if e.is_connect() {
+            RunbeamError::JwtValidation(format!("Failed to connect to JWKS endpoint: {}", jwks_url))
+        } else {
+            RunbeamError::JwtValidation(format!("Network error fetching JWKS: {}", e))
+        }
+    })?;
 
     let status = response.status();
     if !status.is_success() {
-        tracing::error!("JWKS endpoint returned HTTP {}: {}", status.as_u16(), jwks_url);
+        tracing::error!(
+            "JWKS endpoint returned HTTP {}: {}",
+            status.as_u16(),
+            jwks_url
+        );
         return Err(RunbeamError::JwtValidation(format!(
             "JWKS endpoint returned HTTP {}",
             status.as_u16()
         )));
     }
 
-    let jwks = response
-        .json::<Jwks>()
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to parse JWKS response from {}: {}", jwks_url, e);
-            RunbeamError::JwtValidation(format!("Invalid JWKS response: {}", e))
-        })?;
+    let jwks = response.json::<Jwks>().await.map_err(|e| {
+        tracing::error!("Failed to parse JWKS response from {}: {}", jwks_url, e);
+        RunbeamError::JwtValidation(format!("Invalid JWKS response: {}", e))
+    })?;
 
-    tracing::info!("Successfully fetched JWKS with {} keys from {}", jwks.keys.len(), jwks_url);
+    tracing::info!(
+        "Successfully fetched JWKS with {} keys from {}",
+        jwks.keys.len(),
+        jwks_url
+    );
     Ok(jwks)
 }
 
@@ -326,10 +342,9 @@ pub async fn validate_jwt_token(
     let header = decode_header(token)
         .map_err(|e| RunbeamError::JwtValidation(format!("Invalid JWT header: {}", e)))?;
 
-    let kid = header.kid
-        .ok_or_else(|| RunbeamError::JwtValidation(
-            "Missing 'kid' (key ID) in JWT header".to_string()
-        ))?;
+    let kid = header.kid.ok_or_else(|| {
+        RunbeamError::JwtValidation("Missing 'kid' (key ID) in JWT header".to_string())
+    })?;
 
     // Verify algorithm is RS256
     if header.alg != Algorithm::RS256 {
@@ -397,7 +412,8 @@ pub async fn validate_jwt_token(
             }
 
             // Fetch fresh JWKS and retry
-            let fresh_key = get_decoding_key(&base_url, &kid, cache_duration).await
+            let fresh_key = get_decoding_key(&base_url, &kid, cache_duration)
+                .await
                 .map_err(|refresh_err| {
                     tracing::error!("Failed to refresh JWKS: {}", refresh_err);
                     RunbeamError::JwtValidation(format!(

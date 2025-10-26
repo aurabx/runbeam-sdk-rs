@@ -9,16 +9,26 @@ use std::pin::Pin;
 /// implementations (filesystem, keyring, etc.)
 pub trait StorageBackend: Send + Sync {
     /// Write data to storage at the specified path
-    fn write_file_str(&self, path: &str, data: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>>;
+    fn write_file_str(
+        &self,
+        path: &str,
+        data: &[u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>>;
 
     /// Read data from storage at the specified path
-    fn read_file_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>>;
+    fn read_file_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>>;
 
     /// Check if a file exists at the specified path
     fn exists_str(&self, path: &str) -> bool;
 
     /// Remove a file at the specified path
-    fn remove_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>>;
+    fn remove_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>>;
 }
 
 /// Storage errors
@@ -86,32 +96,45 @@ impl KeyringStorage {
 }
 
 impl StorageBackend for KeyringStorage {
-    fn write_file_str(&self, path: &str, data: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
+    fn write_file_str(
+        &self,
+        path: &str,
+        data: &[u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
         let path = path.to_string();
         let data = data.to_vec();
         let service_name = self.service_name.clone();
-        
+
         Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path)
-                .map_err(|e| StorageError::Keyring(format!("Failed to create keyring entry: {}", e)))?;
-            
+            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
+                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
+            })?;
+
             let data_str = String::from_utf8(data)
                 .map_err(|e| StorageError::Config(format!("Invalid UTF-8 data: {}", e)))?;
-            
+
             entry.set_password(&data_str)?;
-            tracing::debug!("Stored data in keyring: service={}, path={}", service_name, path);
+            tracing::debug!(
+                "Stored data in keyring: service={}, path={}",
+                service_name,
+                path
+            );
             Ok(())
         })
     }
 
-    fn read_file_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>> {
+    fn read_file_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>> {
         let path = path.to_string();
         let service_name = self.service_name.clone();
-        
+
         Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path)
-                .map_err(|e| StorageError::Keyring(format!("Failed to create keyring entry: {}", e)))?;
-            
+            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
+                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
+            })?;
+
             let password = entry.get_password()?;
             Ok(password.into_bytes())
         })
@@ -125,16 +148,24 @@ impl StorageBackend for KeyringStorage {
         }
     }
 
-    fn remove_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
+    fn remove_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
         let path = path.to_string();
         let service_name = self.service_name.clone();
-        
+
         Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path)
-                .map_err(|e| StorageError::Keyring(format!("Failed to create keyring entry: {}", e)))?;
-            
+            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
+                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
+            })?;
+
             entry.delete_credential()?;
-            tracing::debug!("Removed data from keyring: service={}, path={}", service_name, path);
+            tracing::debug!(
+                "Removed data from keyring: service={}, path={}",
+                service_name,
+                path
+            );
             Ok(())
         })
     }
@@ -154,7 +185,7 @@ impl FilesystemStorage {
     /// Create a new filesystem storage with the specified base path
     pub fn new(base_path: impl AsRef<Path>) -> Result<Self, StorageError> {
         let base_path = base_path.as_ref().to_path_buf();
-        
+
         if !base_path.exists() {
             std::fs::create_dir_all(&base_path)?;
         }
@@ -169,10 +200,14 @@ impl FilesystemStorage {
 }
 
 impl StorageBackend for FilesystemStorage {
-    fn write_file_str(&self, path: &str, data: &[u8]) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
+    fn write_file_str(
+        &self,
+        path: &str,
+        data: &[u8],
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
         let full_path = self.resolve_path(path);
         let data = data.to_vec();
-        
+
         Box::pin(async move {
             // Create parent directories if needed
             if let Some(parent) = full_path.parent() {
@@ -185,9 +220,12 @@ impl StorageBackend for FilesystemStorage {
         })
     }
 
-    fn read_file_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>> {
+    fn read_file_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>> {
         let full_path = self.resolve_path(path);
-        
+
         Box::pin(async move {
             let data = tokio::fs::read(&full_path).await?;
             tracing::debug!("Read data from filesystem: {:?}", full_path);
@@ -200,9 +238,12 @@ impl StorageBackend for FilesystemStorage {
         full_path.exists()
     }
 
-    fn remove_str(&self, path: &str) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
+    fn remove_str(
+        &self,
+        path: &str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
         let full_path = self.resolve_path(path);
-        
+
         Box::pin(async move {
             tokio::fs::remove_file(&full_path).await?;
             tracing::debug!("Removed file from filesystem: {:?}", full_path);
@@ -236,7 +277,10 @@ mod tests {
         let storage = FilesystemStorage::new(temp_dir.path()).unwrap();
 
         let test_data = b"nested data";
-        storage.write_file_str("nested/path/test.txt", test_data).await.unwrap();
+        storage
+            .write_file_str("nested/path/test.txt", test_data)
+            .await
+            .unwrap();
 
         assert!(storage.exists_str("nested/path/test.txt"));
 
@@ -270,7 +314,7 @@ mod tests {
         let storage = KeyringStorage::new("runbeam-sdk-test");
 
         let test_data = b"{\"test\": \"data\"}";
-        
+
         // Write data
         if let Err(e) = storage.write_file_str("test-key", test_data).await {
             // Skip test if keyring is not available (e.g., in CI or headless environments)
@@ -290,7 +334,7 @@ mod tests {
         match storage.read_file_str("test-key").await {
             Ok(read_data) => {
                 assert_eq!(read_data, test_data);
-                
+
                 // Cleanup
                 storage.remove_str("test-key").await.unwrap();
                 assert!(!storage.exists_str("test-key"));

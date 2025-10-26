@@ -8,6 +8,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 The SDK handles:
 - JWT token validation using RS256 with JWKS endpoint discovery
+- Laravel Sanctum API token support
 - Runbeam Cloud API client for gateway authorization
 - Machine token storage and lifecycle management
 - Type definitions for API requests/responses and error handling
@@ -26,13 +27,24 @@ The codebase is organized as a library crate (`src/lib.rs`) with the main implem
 
 ### Authorization Flow
 
-The SDK implements a multi-step authorization flow documented in `src/runbeam_api/mod.rs`:
+The SDK supports two authentication methods for authorization:
+
+#### JWT Token Authorization (Legacy)
 
 1. CLI sends user JWT token to Harmony Management API
 2. Harmony validates JWT locally (signature verification via JWKS)
 3. Harmony exchanges user JWT for machine token from Runbeam Cloud
 4. Runbeam Cloud issues machine-scoped token (30-day expiry)
 5. Machine token is stored locally for autonomous API access
+
+#### Sanctum Token Authorization
+
+1. CLI sends user Sanctum API token to Harmony Management API
+2. Harmony passes token directly to Runbeam Cloud (no local validation)
+3. Runbeam Cloud validates token server-side and issues machine-scoped token (30-day expiry)
+4. Machine token is stored locally for autonomous API access
+
+All API methods accept both JWT and Sanctum tokens interchangeably.
 
 ### Key Patterns
 
@@ -123,7 +135,7 @@ The project uses Rust edition 2024, which may require a recent nightly or future
 
 ## Usage Examples
 
-### Basic Integration
+### JWT Token Authentication (Legacy)
 
 ```rust
 use runbeam_sdk::{
@@ -171,6 +183,97 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Token has expired");
         }
     }
+    
+    Ok(())
+}
+```
+
+### Laravel Sanctum API Token Authentication
+
+```rust
+use runbeam_sdk::{
+    RunbeamClient,
+    save_token,
+    load_token,
+    MachineToken,
+    storage::KeyringStorage,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Create API client with base URL (no JWT validation needed)
+    let client = RunbeamClient::new("https://api.runbeam.io");
+    
+    // 2. Authorize gateway with Sanctum token
+    // Sanctum tokens typically have the format: {id}|{plaintext_token}
+    let sanctum_token = "1|abc123def456...";
+    let response = client.authorize_gateway(
+        sanctum_token,
+        "gateway-123",
+        None,
+        None
+    ).await?;
+    
+    // 3. Save machine token securely in OS keyring
+    let storage = KeyringStorage::new("runbeam");
+    let machine_token = MachineToken::new(
+        response.machine_token,
+        response.expires_at,
+        response.gateway.id,
+        response.gateway.code,
+        response.abilities,
+    );
+    save_token(&storage, &machine_token).await?;
+    
+    // 4. Use the machine token for subsequent API calls
+    if let Some(token) = load_token(&storage).await? {
+        if token.is_valid() {
+            // Use machine token with any API method
+            let gateways = client.list_gateways(&token.machine_token).await?;
+            println!("Found {} gateways", gateways.data.len());
+        }
+    }
+    
+    Ok(())
+}
+```
+
+### Choosing Between Authentication Methods
+
+**Use JWT tokens when:**
+- You need local token validation before making API calls
+- You need to extract claims (user info, team info) from the token locally
+- You're working with existing JWT-based infrastructure
+- You want to verify token authenticity without server roundtrips
+
+**Use Sanctum API tokens when:**
+- You want simpler authentication without local validation complexity
+- Your application doesn't need to inspect token claims locally
+- You're integrating with Laravel-based authentication systems
+- You prefer server-side token validation
+
+### Using All API Methods with Both Token Types
+
+All API client methods accept both JWT and Sanctum tokens:
+
+```rust
+use runbeam_sdk::RunbeamClient;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = RunbeamClient::new("https://api.runbeam.io");
+    
+    // Works with JWT tokens
+    let jwt_token = "eyJhbGci...";
+    let gateways = client.list_gateways(jwt_token).await?;
+    
+    // Also works with Sanctum tokens
+    let sanctum_token = "1|abc123def456...";
+    let services = client.list_services(sanctum_token).await?;
+    
+    // Also works with machine tokens
+    let machine_token = "machine_token_string";
+    let endpoints = client.list_endpoints(machine_token).await?;
     
     Ok(())
 }
