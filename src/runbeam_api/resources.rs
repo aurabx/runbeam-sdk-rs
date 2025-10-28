@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Paginated response wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,16 +38,33 @@ pub struct ResourceResponse<T> {
 /// Gateway resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Gateway {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
     pub code: String,
     pub name: String,
-    pub enabled: bool,
+    pub team_id: String,
+    pub enabled: Option<bool>,
     #[serde(default)]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    pub pipelines_path: Option<String>,
     #[serde(default)]
-    pub authorized_by: Option<AuthorizedByInfo>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub transforms_path: Option<String>,
+    #[serde(default)]
+    pub jwks_cache_duration_hours: Option<u32>,
+    #[serde(default)]
+    pub management_enabled: Option<bool>,
+    #[serde(default)]
+    pub management_base_path: Option<String>,
+    #[serde(default)]
+    pub management_network_id: Option<String>,
+    #[serde(default)]
+    pub dns: Option<Vec<String>>,
+    #[serde(default)]
+    pub settings: Option<serde_json::Value>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// User who authorized a gateway
@@ -62,120 +78,197 @@ pub struct AuthorizedByInfo {
 /// Service resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Service {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
-    pub gateway_id: String,
+    pub code: String,
     pub name: String,
-    pub service_type: String,
+    pub team_id: String,
+    pub gateway_id: String,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Endpoint resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Endpoint {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
-    pub service_id: String,
+    pub code: String,
     pub name: String,
-    pub path: String,
-    pub methods: Vec<String>,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    #[serde(default)]
+    pub service_id: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub methods: Option<Vec<String>>,
     #[serde(default)]
     pub description: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Backend resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Backend {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
-    pub service_id: String,
+    pub code: String,
     pub name: String,
-    pub url: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    #[serde(default)]
+    pub service_id: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
     #[serde(default)]
     pub timeout_seconds: Option<u32>,
     #[serde(default)]
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Pipeline resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pipeline {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
-    pub endpoint_id: String,
-    pub backend_id: String,
+    pub code: String,
     pub name: String,
+    pub description: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
     #[serde(default)]
-    pub order: Option<u32>,
+    pub networks: Option<Vec<String>>,
     #[serde(default)]
-    pub middleware_ids: Vec<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub endpoints: Option<serde_json::Value>,
+    #[serde(default)]
+    pub backends: Option<serde_json::Value>,
+    #[serde(default)]
+    pub middleware: Option<serde_json::Value>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Middleware resource  
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Middleware {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
+    pub code: String,
     pub name: String,
+    pub team_id: String,
     pub middleware_type: String,
     #[serde(default)]
-    pub config: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub options: Option<serde_json::Value>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Transform resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transform {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
+    pub code: String,
     pub name: String,
-    pub transform_type: String,
+    pub team_id: String,
+    pub gateway_id: String,
     #[serde(default)]
-    pub config: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub options: Option<TransformOptions>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// Transform options
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransformOptions {
+    pub instructions: Option<String>,
 }
 
 /// Policy resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Policy {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
+    pub code: String,
     pub name: String,
-    pub policy_type: String,
+    pub enabled: u32,
+    pub team_id: String,
+    pub gateway_id: String,
     #[serde(default)]
-    pub rules: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub rules: Option<serde_json::Value>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Network resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Network {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
-    pub gateway_id: String,
-    pub domain: String,
+    pub code: String,
+    pub name: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    pub enable_wireguard: bool,
     #[serde(default)]
-    pub dns_config: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub interface: Option<String>,
+    #[serde(default)]
+    pub http: Option<HttpConfig>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// HTTP configuration for network
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpConfig {
+    pub bind_address: Option<String>,
+    pub bind_port: Option<u16>,
 }
 
 /// Authentication resource
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authentication {
+    #[serde(rename = "type")]
+    pub resource_type: String,
     pub id: String,
+    pub code: Option<String>,
     pub name: String,
-    pub auth_type: String,
+    pub team_id: Option<String>,
+    pub gateway_id: Option<String>,
     #[serde(default)]
-    pub config: Option<HashMap<String, serde_json::Value>>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub options: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Full gateway configuration (for downloading complete config)

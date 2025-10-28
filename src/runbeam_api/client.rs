@@ -1,7 +1,5 @@
 use crate::runbeam_api::types::{ApiError, AuthorizeResponse, RunbeamError};
 use serde::Serialize;
-use serde_json::Value as JsonValue;
-use std::collections::HashMap;
 
 /// HTTP client for Runbeam Cloud API
 ///
@@ -25,9 +23,9 @@ struct AuthorizeRequest {
     /// Optional machine public key for secure communication
     #[serde(skip_serializing_if = "Option::is_none")]
     machine_public_key: Option<String>,
-    /// Optional metadata about the gateway
+    /// Optional metadata about the gateway (array of strings per v1.1 API spec)
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<HashMap<String, JsonValue>>,
+    metadata: Option<Vec<String>>,
 }
 
 impl RunbeamClient {
@@ -74,7 +72,7 @@ impl RunbeamClient {
     /// * `user_token` - The user's JWT or Sanctum API token from CLI authentication
     /// * `gateway_code` - The gateway instance ID
     /// * `machine_public_key` - Optional public key for secure communication
-    /// * `metadata` - Optional metadata about the gateway
+    /// * `metadata` - Optional metadata about the gateway (array of strings)
     ///
     /// # Returns
     ///
@@ -115,7 +113,7 @@ impl RunbeamClient {
         user_token: impl Into<String>,
         gateway_code: impl Into<String>,
         machine_public_key: Option<String>,
-        metadata: Option<HashMap<String, JsonValue>>,
+        metadata: Option<Vec<String>>,
     ) -> Result<AuthorizeResponse, RunbeamError> {
         let user_token = user_token.into();
         let gateway_code = gateway_code.into();

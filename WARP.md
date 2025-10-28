@@ -24,6 +24,7 @@ The codebase is organized as a library crate (`src/lib.rs`) with the main implem
 - **`jwt.rs`** - JWT validation with RS256 algorithm and JWKS caching
 - **`token_storage.rs`** - Machine token persistence operations
 - **`types.rs`** - Error types (`RunbeamError`, `ApiError`) and API response structures
+- **`resources.rs`** - Resource structs matching API v1.1 schemas (Gateway, Service, Endpoint, Backend, Pipeline, etc.)
 
 ### Authorization Flow
 
@@ -125,7 +126,7 @@ Two storage backends are provided:
 Both implement the `StorageBackend` trait with boxed futures for trait object compatibility.
 
 ### API Documentation
-The OpenAPI 3.1.0 specification for the Runbeam API is available in `docs/document.json` and includes detailed endpoint documentation, authentication methods, and data schemas.
+The OpenAPI 3.1.0 specification for the Runbeam API v1.1 is available in `docs/v1-1.json` and includes detailed endpoint documentation, authentication methods, and data schemas. This SDK is compatible with API version 1.1.
 
 ### Logging
 The codebase uses `tracing` for structured logging with debug, info, warn, and error levels. Consumers should initialize a tracing subscriber to capture logs.
