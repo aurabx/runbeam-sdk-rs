@@ -40,7 +40,8 @@ pub struct ResourceResponse<T> {
 pub struct Gateway {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -80,7 +81,8 @@ pub struct AuthorizedByInfo {
 pub struct Service {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -98,7 +100,8 @@ pub struct Service {
 pub struct Endpoint {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -122,7 +125,8 @@ pub struct Endpoint {
 pub struct Backend {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -144,7 +148,8 @@ pub struct Backend {
 pub struct Pipeline {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub description: String,
@@ -169,7 +174,8 @@ pub struct Pipeline {
 pub struct Middleware {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -187,7 +193,8 @@ pub struct Middleware {
 pub struct Transform {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -211,7 +218,8 @@ pub struct TransformOptions {
 pub struct Policy {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub enabled: u32,
@@ -230,7 +238,8 @@ pub struct Policy {
 pub struct Network {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: String,
     pub name: String,
     pub team_id: String,
@@ -258,7 +267,8 @@ pub struct HttpConfig {
 pub struct Authentication {
     #[serde(rename = "type")]
     pub resource_type: String,
-    pub id: String,
+    #[serde(default)]
+    pub id: Option<String>,
     pub code: Option<String>,
     pub name: String,
     pub team_id: Option<String>,
