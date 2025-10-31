@@ -1,4 +1,6 @@
-use crate::runbeam_api::types::{ApiError, AuthorizeResponse, RunbeamError};
+use crate::runbeam_api::types::{
+    ApiError, AuthorizeResponse, ConfigChange, ConfigChangeAck, ConfigChangeDetail, RunbeamError,
+};
 use serde::Serialize;
 
 /// HTTP client for Runbeam Cloud API
@@ -196,6 +198,222 @@ impl RunbeamClient {
     /// Get the base URL for this client
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// List pending config changes for a gateway
+    ///
+    /// # Arguments
+    ///
+    /// * `gateway_token` - Machine token for the gateway
+    pub async fn list_config_changes(
+        &self,
+        gateway_token: impl Into<String>,
+    ) -> Result<Vec<ConfigChange>, RunbeamError> {
+        let url = format!("{}/api/harmony/config-changes", self.base_url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Get detailed config change content
+    ///
+    /// # Arguments
+    ///
+    /// * `gateway_token` - Machine token for the gateway
+    /// * `change_id` - ID of the config change
+    pub async fn get_config_change(
+        &self,
+        gateway_token: impl Into<String>,
+        change_id: impl Into<String>,
+    ) -> Result<ConfigChangeDetail, RunbeamError> {
+        let url = format!(
+            "{}/api/harmony/config-changes/{}",
+            self.base_url,
+            change_id.into()
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Acknowledge receipt of a config change
+    ///
+    /// # Arguments
+    ///
+    /// * `gateway_token` - Machine token for the gateway
+    /// * `change_id` - ID of the config change
+    pub async fn acknowledge_config_change(
+        &self,
+        gateway_token: impl Into<String>,
+        change_id: impl Into<String>,
+    ) -> Result<ConfigChangeAck, RunbeamError> {
+        let url = format!(
+            "{}/api/harmony/config-changes/{}/acknowledge",
+            self.base_url,
+            change_id.into()
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Report successful application of a config change
+    ///
+    /// # Arguments
+    ///
+    /// * `gateway_token` - Machine token for the gateway
+    /// * `change_id` - ID of the config change
+    pub async fn report_config_applied(
+        &self,
+        gateway_token: impl Into<String>,
+        change_id: impl Into<String>,
+    ) -> Result<ConfigChangeAck, RunbeamError> {
+        let url = format!(
+            "{}/api/harmony/config-changes/{}/applied",
+            self.base_url,
+            change_id.into()
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Report failed application of a config change
+    ///
+    /// # Arguments
+    ///
+    /// * `gateway_token` - Machine token for the gateway
+    /// * `change_id` - ID of the config change
+    /// * `error` - Error message describing the failure
+    pub async fn report_config_failed(
+        &self,
+        gateway_token: impl Into<String>,
+        change_id: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Result<ConfigChangeAck, RunbeamError> {
+        let url = format!(
+            "{}/api/harmony/config-changes/{}/failed",
+            self.base_url,
+            change_id.into()
+        );
+
+        #[derive(Serialize)]
+        struct FailurePayload {
+            error: String,
+        }
+
+        let payload = FailurePayload {
+            error: error.into(),
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
     }
 
     /// List all gateways for the authenticated team

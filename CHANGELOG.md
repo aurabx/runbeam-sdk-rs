@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2024-10-31
+
+### Added
+
+- **Tests**
+  - Added 13 comprehensive integration tests for Change Management functionality
+  - Tests cover resource serialization/deserialization across all change states
+  - Tests verify request/response payloads for all new endpoints
+  - Tests cover edge cases including empty lists, error states, and complex payloads
+  - Added `tests/README.md` with detailed test documentation
+  - All 49 tests passing (25 unit + 13 integration + 11 doc tests)
+
+### Changed
+
+- Fixed clippy warning in test code (useless vec! allocation)
+
 ## [0.3.0] - 2024-10-31
 
 ### Added
@@ -69,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.3.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/aurabx/runbeam-sdk-rs/releases/tag/v0.1.0

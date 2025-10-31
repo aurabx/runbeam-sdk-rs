@@ -44,4 +44,4 @@ pub use client::RunbeamClient;
 pub use jwt::{validate_jwt_token, JwtClaims};
 pub use resources::*;
 pub use token_storage::{clear_token, load_token, save_token, MachineToken};
-pub use types::{ApiError, RunbeamError};
+pub use types::{ApiError, ConfigChange, ConfigChangeAck, ConfigChangeDetail, RunbeamError};

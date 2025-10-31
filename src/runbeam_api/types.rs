@@ -136,3 +136,28 @@ pub struct AuthorizeResponse {
     #[serde(default)]
     pub abilities: Vec<String>,
 }
+
+/// Config change summary from list endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigChange {
+    pub id: String,
+    pub timestamp: String,
+    pub summary: String,
+}
+
+/// Detailed config change with full content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigChangeDetail {
+    pub id: String,
+    pub content: String,
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Response after acknowledging/reporting config change
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigChangeAck {
+    pub success: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+}
