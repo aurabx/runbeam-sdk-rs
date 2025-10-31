@@ -12,8 +12,12 @@ A Rust library for integrating with the Runbeam Cloud API.
   - Service management (list, get, create, update, delete)
   - Endpoint, Backend, and Pipeline management
   - Gateway authorization and token management
-- **Secure Storage** - OS-native credential storage (Keychain/Secret Service/Credential Manager)
+- **Secure Token Storage** - Automatic secure storage with OS keychain or encrypted filesystem
+  - Keyring (OS-native): macOS Keychain, Linux Secret Service, Windows Credential Manager
+  - Encrypted Filesystem fallback: age encryption with instance-specific keys
+  - No configuration required - automatically selects best option
 - **Machine Tokens** - Autonomous gateway authentication with 30-day expiry
+- **Instance Isolation** - Multiple instances can coexist with separate storage
 - **Cross-Platform** - Works on macOS, Linux, and Windows
 
 ## Installation
@@ -34,8 +38,8 @@ use runbeam_sdk::{
     RunbeamClient,
     validate_jwt_token,
     save_token,
+    load_token,
     MachineToken,
-    storage::KeyringStorage,
 };
 
 #[tokio::main]
@@ -55,8 +59,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     ).await?;
     
-    // Save machine token securely
-    let storage = KeyringStorage::new("runbeam");
+    // Save machine token securely (automatic storage selection)
+    let instance_id = "my-gateway"; // Unique identifier for this instance
     let machine_token = MachineToken::new(
         response.machine_token,
         response.expires_at,
@@ -64,20 +68,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         response.gateway.code,
         response.abilities,
     );
-    save_token(&storage, &machine_token).await?;
+    save_token(instance_id, &machine_token).await?;
+    
+    // Load token later
+    if let Some(token) = load_token(instance_id).await? {
+        if token.is_valid() {
+            println!("Token valid until: {}", token.expires_at);
+        }
+    }
     
     Ok(())
 }
 ```
 
-### Using Laravel Sanctum Tokens
+### Using Runbeam Tokens
 
 ```rust
 use runbeam_sdk::{
     RunbeamClient,
     save_token,
+    load_token,
     MachineToken,
-    storage::KeyringStorage,
 };
 
 #[tokio::main]
@@ -95,8 +106,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     ).await?;
     
-    // Save machine token securely
-    let storage = KeyringStorage::new("runbeam");
+    // Save machine token securely (automatic storage selection)
+    let instance_id = "my-gateway"; // Unique identifier for this instance
     let machine_token = MachineToken::new(
         response.machine_token,
         response.expires_at,
@@ -104,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         response.gateway.code,
         response.abilities,
     );
-    save_token(&storage, &machine_token).await?;
+    save_token(instance_id, &machine_token).await?;
     
     Ok(())
 }
@@ -149,30 +160,59 @@ Sanctum tokens (format: `{id}|{token}`) are passed directly to the server for va
 
 > **Note:** All API methods accept both JWT and Sanctum tokens interchangeably.
 
-## Storage Options
+## Secure Token Storage
 
-### KeyringStorage (Recommended)
+The SDK automatically manages secure token storage with **no configuration required**.
 
-Uses OS-native secure credential storage:
-- **macOS**: Keychain
-- **Linux**: Secret Service API
-- **Windows**: Credential Manager
+### Automatic Storage Selection
 
-```rust
-use runbeam_sdk::storage::KeyringStorage;
+When you call `save_token()`, `load_token()`, or `clear_token()`, the SDK automatically:
 
-let storage = KeyringStorage::new("runbeam");
-```
+1. **Tries OS Keyring first** (macOS Keychain, Linux Secret Service, Windows Credential Manager)
+2. **Falls back to Encrypted Filesystem** if keyring unavailable (headless/CI/CD environments)
 
-### FilesystemStorage (Development/Testing)
+### Instance Isolation
 
-Stores tokens in the filesystem:
+Each instance gets its own isolated storage using an `instance_id`:
 
 ```rust
-use runbeam_sdk::storage::FilesystemStorage;
+use runbeam_sdk::{save_token, load_token, clear_token, MachineToken};
 
-let storage = FilesystemStorage::new("/path/to/storage")?;
+// Each instance_id gets separate storage at ~/.runbeam/<instance_id>/
+let instance_id = "harmony-production";
+
+// Save token
+save_token(instance_id, &token).await?;
+
+// Load token
+if let Some(token) = load_token(instance_id).await? {
+    println!("Loaded token for gateway: {}", token.gateway_code);
+}
+
+// Clear token
+clear_token(instance_id).await?;
 ```
+
+### Encryption Key Management
+
+When using encrypted filesystem storage (fallback), keys are sourced from:
+
+1. **`RUNBEAM_ENCRYPTION_KEY` environment variable** (production/containers)
+   ```bash
+   export RUNBEAM_ENCRYPTION_KEY=$(age-keygen | base64 -w 0)
+   ```
+
+2. **Auto-generated key** at `~/.runbeam/<instance_id>/encryption.key` (development)
+   - Created with restrictive permissions (0600 on Unix)
+   - Persists across application restarts
+
+### Security Guarantees
+
+✅ **Tokens are NEVER stored unencrypted on disk**
+✅ **Automatic keyring use when available**
+✅ **age X25519 encryption** for filesystem storage
+✅ **Instance isolation** - multiple instances can coexist
+✅ **Thread-safe** for concurrent access
 
 ## Development
 

@@ -22,7 +22,13 @@ chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 keyring = { version = "3.6", features = ["sync-secret-service"] }
+age = "0.10"
+rand = "0.8"
+base64 = "0.22"
+dirs = "5.0"
+secrecy = "0.8"
 
 [dev-dependencies]
 tempfile = "3.13"
 tokio-test = "0.4"
+serial_test = "3.2"

@@ -32,9 +32,7 @@
 //!     RunbeamClient,
 //!     validate_jwt_token,
 //!     save_token,
-//!     load_token,
 //!     MachineToken,
-//!     storage::{KeyringStorage, StorageBackend},
 //! };
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -52,8 +50,7 @@
 //!     None
 //! ).await?;
 //!
-//! // Save machine token securely
-//! let storage = KeyringStorage::new("runbeam");
+//! // Save machine token securely (automatic storage selection)
 //! let machine_token = MachineToken::new(
 //!     response.machine_token,
 //!     response.expires_at,
@@ -61,7 +58,7 @@
 //!     response.gateway.code,
 //!     response.abilities,
 //! );
-//! save_token(&storage, &machine_token).await?;
+//! save_token("gateway-123", &machine_token).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -73,7 +70,6 @@
 //!     RunbeamClient,
 //!     save_token,
 //!     MachineToken,
-//!     storage::{KeyringStorage, StorageBackend},
 //! };
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,8 +84,7 @@
 //!     None
 //! ).await?;
 //!
-//! // Save machine token securely
-//! let storage = KeyringStorage::new("runbeam");
+//! // Save machine token securely (automatic storage selection)
 //! let machine_token = MachineToken::new(
 //!     response.machine_token,
 //!     response.expires_at,
@@ -97,7 +92,7 @@
 //!     response.gateway.code,
 //!     response.abilities,
 //! );
-//! save_token(&storage, &machine_token).await?;
+//! save_token("gateway-123", &machine_token).await?;
 //! # Ok(())
 //! # }
 //! ```
