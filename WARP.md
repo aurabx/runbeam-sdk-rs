@@ -24,7 +24,7 @@ The codebase is organized as a library crate (`src/lib.rs`) with the main implem
 - **`jwt.rs`** - JWT validation with RS256 algorithm and JWKS caching
 - **`token_storage.rs`** - Machine token persistence operations
 - **`types.rs`** - Error types (`RunbeamError`, `ApiError`) and API response structures
-- **`resources.rs`** - Resource structs matching API v1.1 schemas (Gateway, Service, Endpoint, Backend, Pipeline, etc.)
+- **`resources.rs`** - Resource structs matching API v1.2 schemas (Gateway, Service, Endpoint, Backend, Pipeline, Change, etc.)
 
 ### Authorization Flow
 
@@ -46,6 +46,25 @@ The SDK supports two authentication methods for authorization:
 4. Machine token is stored locally for autonomous API access
 
 All API methods accept both JWT and Sanctum tokens interchangeably.
+
+### Change Management Flow
+
+The Change Management API (introduced in API v1.2) enables Harmony Proxy gateways to poll for and apply configuration updates:
+
+1. Gateway polls `/gateway/base-url` to discover the changes API base URL
+2. Gateway polls `/gateway/changes` to retrieve queued configuration changes (typically every 30 seconds)
+3. Gateway acknowledges receipt via `/gateway/changes/acknowledge` (bulk operation)
+4. Gateway attempts to apply each change to its configuration
+5. Gateway reports success via `/gateway/changes/{id}/applied` OR
+6. Gateway reports failure via `/gateway/changes/{id}/failed` with error details
+
+**Change States:**
+- `pending` - Change is queued and awaiting acknowledgment
+- `acknowledged` - Gateway has received the change
+- `applied` - Change was successfully applied to gateway configuration
+- `failed` - Change application failed (includes error details)
+
+All endpoints accept JWT tokens, Sanctum API tokens, or machine tokens for authentication.
 
 ### Key Patterns
 
@@ -126,7 +145,7 @@ Two storage backends are provided:
 Both implement the `StorageBackend` trait with boxed futures for trait object compatibility.
 
 ### API Documentation
-The OpenAPI 3.1.0 specification for the Runbeam API v1.1 is available in `docs/v1-1.json` and includes detailed endpoint documentation, authentication methods, and data schemas. This SDK is compatible with API version 1.1.
+The OpenAPI 3.1.0 specification for the Runbeam API v1.2 is available in `docs/v1-2.json` and includes detailed endpoint documentation, authentication methods, and data schemas. This SDK is compatible with API version 1.2.
 
 ### Logging
 The codebase uses `tracing` for structured logging with debug, info, warn, and error levels. Consumers should initialize a tracing subscriber to capture logs.
@@ -295,4 +314,146 @@ use runbeam_sdk::{
     validate_jwt_token,
     storage::KeyringStorage,
 };
+```
+
+### Change Management Examples
+
+The SDK provides comprehensive support for the Change Management API (v1.2):
+
+#### Polling for Configuration Changes
+
+```rust
+use runbeam_sdk::{RunbeamClient, load_token, storage::KeyringStorage};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = RunbeamClient::new("https://api.runbeam.io");
+    let storage = KeyringStorage::new("runbeam");
+    
+    // Load machine token
+    let token = load_token(&storage).await?
+        .expect("Machine token not found");
+    
+    // Get the base URL for changes API (service discovery)
+    let base_url_response = client.get_base_url(&token.machine_token).await?;
+    println!("Changes API base URL: {}", base_url_response.base_url);
+    
+    // Poll for pending changes
+    let changes = client.list_changes(&token.machine_token).await?;
+    println!("Found {} pending changes", changes.data.len());
+    
+    // Acknowledge all changes
+    if !changes.data.is_empty() {
+        let change_ids: Vec<String> = changes.data.iter()
+            .map(|c| c.id.clone())
+            .collect();
+        client.acknowledge_changes(&token.machine_token, change_ids).await?;
+        println!("Acknowledged all changes");
+    }
+    
+    Ok(())
+}
+```
+
+#### Applying Configuration Changes
+
+```rust
+use runbeam_sdk::{RunbeamClient, Change};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = RunbeamClient::new("https://api.runbeam.io");
+    let machine_token = "machine_token_abc123";
+    
+    // Get a specific change
+    let change_response = client.get_change(machine_token, "change-123").await?;
+    let change = change_response.data;
+    
+    // Attempt to apply the change
+    match apply_change_to_gateway(&change) {
+        Ok(_) => {
+            // Report success
+            client.mark_change_applied(machine_token, &change.id).await?;
+            println!("Change {} applied successfully", change.id);
+        }
+        Err(e) => {
+            // Report failure with error details
+            client.mark_change_failed(
+                machine_token,
+                &change.id,
+                e.to_string(),
+                Some(vec!["Stack trace or additional context".to_string()])
+            ).await?;
+            println!("Change {} failed: {}", change.id, e);
+        }
+    }
+    
+    Ok(())
+}
+
+fn apply_change_to_gateway(change: &Change) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation would parse change.payload and update gateway configuration
+    // This is a placeholder
+    Ok(())
+}
+```
+
+#### Continuous Change Polling Loop
+
+```rust
+use runbeam_sdk::{RunbeamClient, load_token, storage::KeyringStorage};
+use std::time::Duration;
+use tokio::time::sleep;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = RunbeamClient::new("https://api.runbeam.io");
+    let storage = KeyringStorage::new("runbeam");
+    
+    loop {
+        // Load machine token (checks expiry)
+        let Some(token) = load_token(&storage).await? else {
+            eprintln!("No machine token found, sleeping...");
+            sleep(Duration::from_secs(60)).await;
+            continue;
+        };
+        
+        if !token.is_valid() {
+            eprintln!("Machine token expired, re-authorization needed");
+            break;
+        }
+        
+        // Poll for changes
+        match client.list_changes(&token.machine_token).await {
+            Ok(changes) => {
+                if !changes.data.is_empty() {
+                    println!("Processing {} changes", changes.data.len());
+                    
+                    // Acknowledge all changes immediately
+                    let change_ids: Vec<String> = changes.data.iter()
+                        .map(|c| c.id.clone())
+                        .collect();
+                    client.acknowledge_changes(&token.machine_token, change_ids).await?;
+                    
+                    // Process each change
+                    for change in changes.data {
+                        println!("Applying change {}: {} on {}",
+                            change.id, change.operation, change.change_resource_type);
+                        
+                        // Apply change logic here...
+                        // Report success/failure using mark_change_applied or mark_change_failed
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to poll changes: {}", e);
+            }
+        }
+        
+        // Poll every 30 seconds
+        sleep(Duration::from_secs(30)).await;
+    }
+    
+    Ok(())
+}
 ```

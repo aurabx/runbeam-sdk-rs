@@ -302,3 +302,42 @@ pub struct GatewayConfiguration {
     #[serde(default)]
     pub networks: Vec<Network>,
 }
+
+/// Change resource for configuration change tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Change {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    pub gateway_id: String,
+    pub status: String,
+    pub operation: String,
+    #[serde(rename = "resourceType")]
+    pub change_resource_type: String,
+    pub resource_id: String,
+    pub payload: serde_json::Value,
+    #[serde(default)]
+    pub error: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Response from the base URL discovery endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaseUrlResponse {
+    pub base_url: String,
+}
+
+/// Request payload for acknowledging multiple changes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcknowledgeChangesRequest {
+    pub change_ids: Vec<String>,
+}
+
+/// Request payload for reporting a failed change
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeFailedRequest {
+    pub error: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Vec<String>>,
+}

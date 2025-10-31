@@ -110,7 +110,8 @@ pub use runbeam_api::{
     client::RunbeamClient,
     jwt::{extract_bearer_token, validate_jwt_token, JwtClaims},
     resources::{
-        Authentication, Backend, Endpoint, Gateway, GatewayConfiguration, Middleware, Network,
+        AcknowledgeChangesRequest, Authentication, Backend, BaseUrlResponse, Change,
+        ChangeFailedRequest, Endpoint, Gateway, GatewayConfiguration, Middleware, Network,
         PaginatedResponse, PaginationLinks, PaginationMeta, Pipeline, Policy, ResourceResponse,
         Service, Transform,
     },
