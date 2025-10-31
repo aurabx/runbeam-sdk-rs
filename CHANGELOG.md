@@ -10,12 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Tests**
-  - Added 13 comprehensive integration tests for Change Management functionality
-  - Tests cover resource serialization/deserialization across all change states
-  - Tests verify request/response payloads for all new endpoints
-  - Tests cover edge cases including empty lists, error states, and complex payloads
+  - Added 7 integration tests for Change Management complex scenarios
+  - Tests cover realistic change workflows with all resource types and operations
+  - Tests verify paginated and single resource response structures
+  - Tests cover various payload structures and edge cases
   - Added `tests/README.md` with detailed test documentation
-  - All 49 tests passing (25 unit + 13 integration + 11 doc tests)
+  - All 43 tests passing (25 unit + 7 integration + 11 doc tests)
 
 ### Changed
 

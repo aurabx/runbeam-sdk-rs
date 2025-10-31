@@ -10,24 +10,18 @@ Comprehensive integration tests for the Change Management API (v1.2) functionali
 
 #### Test Coverage
 
-**Resource Type Tests:**
-- `test_change_resource_full_lifecycle` - Validates Change resource through all states (pending → acknowledged → applied)
+**Change Resource Tests:**
+- `test_change_resource_full_lifecycle` - Validates Change resource through complete workflow with realistic payload
 - `test_change_with_different_operations` - Tests all CRUD operations (create, update, delete)
 - `test_change_with_error_state` - Tests failed changes with error details
-- `test_change_resource_types_coverage` - Validates all supported resource types (endpoint, backend, service, pipeline, middleware, transform, policy, network, gateway)
-
-**Request/Response Tests:**
-- `test_base_url_response_structure` - Tests service discovery response
-- `test_acknowledge_changes_request_single_change` - Tests single change acknowledgment
-- `test_acknowledge_changes_request_multiple_changes` - Tests bulk acknowledgment (10 changes)
-- `test_acknowledge_changes_request_empty_list` - Tests edge case with empty list
-- `test_change_failed_request_with_details` - Tests failure reporting with detailed error info
-- `test_change_failed_request_without_details` - Tests failure reporting without details
+- `test_change_resource_types_coverage` - Validates all 9 supported resource types
 
 **Response Structure Tests:**
-- `test_paginated_changes_response` - Tests paginated list of changes with metadata
+- `test_paginated_changes_response` - Tests paginated API response with multiple changes
 - `test_single_change_resource_response` - Tests single resource response wrapper
 - `test_change_payload_variations` - Tests various JSON payload structures (simple, nested, arrays, complex, null)
+
+**Note:** Basic serialization/deserialization tests for request types (BaseUrlResponse, AcknowledgeChangesRequest, ChangeFailedRequest) are covered in unit tests (src/runbeam_api/client.rs).
 
 #### Running Tests
 
@@ -47,13 +41,12 @@ cargo test --test change_management -- --nocapture --test-threads=1
 
 ## Test Statistics
 
-- **Total Integration Tests**: 13
+- **Total Integration Tests**: 7
 - **Test Categories**:
-  - Resource lifecycle: 4 tests
-  - Request structures: 4 tests
-  - Response structures: 3 tests
-  - Edge cases & variations: 2 tests
-- **Coverage**: All Change Management API types and operations
+  - Change resource scenarios: 4 tests
+  - Response structures: 2 tests
+  - Payload variations: 1 test
+- **Coverage**: Complex integration scenarios; basic serialization covered in unit tests
 
 ## Test Data
 
