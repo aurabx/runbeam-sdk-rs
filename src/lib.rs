@@ -110,6 +110,6 @@ pub use runbeam_api::{
         PaginatedResponse, PaginationLinks, PaginationMeta, Pipeline, Policy, ResourceResponse,
         Service, Transform,
     },
-    token_storage::{clear_token, load_token, save_token, MachineToken},
+    token_storage::{clear_token, load_token, save_token, save_token_with_key, MachineToken},
     types::{ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, TeamInfo, UserInfo},
 };

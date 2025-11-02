@@ -133,6 +133,97 @@ impl MachineToken {
     }
 }
 
+/// Save a machine token with an explicit encryption key
+///
+/// This function uses the provided encryption key for token storage instead of
+/// relying on environment variables or auto-generation. It still prefers OS keyring
+/// when available, falling back to encrypted filesystem with the provided key.
+///
+/// # Arguments
+///
+/// * `instance_id` - Unique identifier for this application instance (e.g., "harmony", "runbeam-cli", "test-123")
+/// * `token` - The machine token to save
+/// * `encryption_key` - Base64-encoded age X25519 encryption key for filesystem storage
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the token was saved successfully, or `Err(StorageError)`
+/// if the operation failed.
+pub async fn save_token_with_key(
+    instance_id: &str,
+    token: &MachineToken,
+    encryption_key: &str,
+) -> Result<(), StorageError> {
+    tracing::debug!(
+        "Saving machine token with explicit encryption key: gateway={}, instance={}",
+        token.gateway_code,
+        instance_id
+    );
+
+    // Check if keyring is disabled
+    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
+
+    // Try keyring first (unless disabled)
+    let backend = if keyring_disabled {
+        tracing::debug!("Keyring disabled via RUNBEAM_DISABLE_KEYRING environment variable");
+        None
+    } else {
+        let keyring = KeyringStorage::new("runbeam");
+        let test_result = tokio::task::spawn_blocking(move || {
+            keyring.exists_str(TOKEN_STORAGE_PATH)
+        })
+        .await;
+
+        match test_result {
+            Ok(_) => {
+                tracing::debug!("Using OS keyring for secure token storage");
+                Some(StorageBackendType::Keyring(KeyringStorage::new("runbeam")))
+            }
+            Err(e) => {
+                tracing::debug!("Keyring unavailable ({}), using encrypted filesystem with provided key", e);
+                None
+            }
+        }
+    };
+
+    let backend = match backend {
+        Some(b) => b,
+        None => {
+            // Use encrypted filesystem with the provided key
+            let encrypted = EncryptedFilesystemStorage::new_with_instance_and_key(
+                instance_id,
+                encryption_key,
+            )
+            .await?;
+            StorageBackendType::Encrypted(encrypted)
+        }
+    };
+
+    // Serialize token to JSON
+    let json = serde_json::to_vec_pretty(&token).map_err(|e| {
+        tracing::error!("Failed to serialize machine token: {}", e);
+        StorageError::Config(format!("JSON serialization failed: {}", e))
+    })?;
+
+    // Write to storage
+    match backend {
+        StorageBackendType::Keyring(storage) => {
+            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
+        }
+        StorageBackendType::Encrypted(storage) => {
+            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
+        }
+    }
+
+    tracing::info!(
+        "Machine token saved successfully with explicit key: gateway_id={}, expires_at={}",
+        token.gateway_id,
+        token.expires_at
+    );
+
+    Ok(())
+}
+
 /// Save a machine token using automatic secure storage selection
 ///
 /// This function automatically selects the most secure available storage:

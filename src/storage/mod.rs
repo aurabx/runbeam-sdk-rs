@@ -325,6 +325,46 @@ impl EncryptedFilesystemStorage {
         Self::new_with_key_path(base_path.clone(), base_path.join("encryption.key")).await
     }
 
+    /// Create a new encrypted filesystem storage with an explicit encryption key
+    ///
+    /// Uses `~/.runbeam/<instance_id>` as the base path for storage.
+    /// The provided encryption key will be used instead of environment variables or auto-generation.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance_id` - Unique identifier for this instance (e.g., "harmony", "runbeam-cli", "test-123")
+    /// * `encryption_key` - Base64-encoded age X25519 encryption key
+    ///
+    /// # Returns
+    ///
+    /// Returns a configured `EncryptedFilesystemStorage` or an error if:
+    /// - The base path cannot be created
+    /// - The encryption key is invalid
+    pub async fn new_with_instance_and_key(
+        instance_id: &str,
+        encryption_key: &str,
+    ) -> Result<Self, StorageError> {
+        let home = dirs::home_dir().ok_or_else(|| {
+            StorageError::KeyStorage("Cannot determine home directory".to_string())
+        })?;
+
+        let base_path = home.join(".runbeam").join(instance_id);
+
+        // Ensure base directory exists
+        if !base_path.exists() {
+            tokio::fs::create_dir_all(&base_path).await?;
+        }
+
+        // Load encryption key from provided string
+        let (recipient, identity) = Self::load_key_from_string(encryption_key)?;
+
+        Ok(Self {
+            base_path,
+            recipient,
+            identity,
+        })
+    }
+
     /// Create a new encrypted filesystem storage
     ///
     /// # Arguments
