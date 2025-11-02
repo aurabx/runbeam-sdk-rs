@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2024-11-01
+
+### Added
+
+- **Generic Secure Token Storage**
+  - Generic functions: `save_token_generic()`, `load_token_generic()`, `clear_token_generic()`
+  - Support for any serializable token type (machine tokens, user tokens, custom types)
+  - Token isolation by name (e.g., `user_token`, `machine_token`)
+  - `UserToken` type for storing user authentication tokens with expiry validation
+  - `UserInfo` struct containing user details (id, name, email)
+
+- **Encrypted Filesystem Storage**
+  - ChaCha20-Poly1305 AEAD encryption for filesystem token storage
+  - Argon2id key derivation with random salt (prevents rainbow table attacks)
+  - Automatic encryption key generation and secure storage in OS keyring
+  - Encryption key stored at `runbeam/encryption_key` identifier
+  - Transparent encryption/decryption (no user configuration needed)
+
+- **Tests**
+  - Generic token storage tests with `UserToken` type
+  - Token type isolation tests (user vs machine tokens)
+  - Encryption verification tests
+  - Comprehensive test coverage for generic storage operations
+
+### Changed
+
+- **Token Storage Refactoring**
+  - Refactored storage to use generic functions internally
+  - Legacy functions (`save_machine_token`, `load_machine_token`) now call generic storage
+  - FilesystemStorage now encrypts all tokens by default
+  - Storage backends automatically handle encryption transparently
+
+- **Security Improvements**
+  - All tokens encrypted at rest (except in OS keyring)
+  - Automatic fallback from keyring to encrypted filesystem
+  - Encryption keys never stored on disk in plaintext
+  - Per-token-type storage isolation
+
+- **Documentation**
+  - Comprehensive documentation updates in WARP.md
+  - Migration guide from v0.2.x to v0.3.x
+  - Security features documentation
+  - Custom token type examples
+  - Generic storage API examples
+
+### Backwards Compatibility
+
+- All existing code using machine token functions continues to work without changes
+- Legacy function names preserved as wrappers
+- No breaking changes to public API
+- Automatic storage format compatibility
+
 ## [0.3.1] - 2024-10-31
 
 ### Added

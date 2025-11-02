@@ -101,6 +101,34 @@ pub struct UserInfo {
     pub name: String,
 }
 
+/// User authentication token (JWT)
+///
+/// This token is used for authenticating user actions with the Runbeam Cloud API.
+/// It has a shorter lifespan than machine tokens and is typically issued after
+/// a user successfully logs in via the browser-based OAuth flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserToken {
+    /// JWT token for API authentication
+    pub token: String,
+    /// Token expiration timestamp (seconds since Unix epoch)
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+    /// User information from JWT claims
+    #[serde(default)]
+    pub user: Option<UserInfo>,
+}
+
+impl UserToken {
+    /// Create a new user token
+    pub fn new(token: String, expires_at: Option<i64>, user: Option<UserInfo>) -> Self {
+        Self {
+            token,
+            expires_at,
+            user,
+        }
+    }
+}
+
 /// Team information from JWT claims
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamInfo {

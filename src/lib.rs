@@ -31,7 +31,7 @@
 //! use runbeam_sdk::{
 //!     RunbeamClient,
 //!     validate_jwt_token,
-//!     save_token,
+//!     save_machine_token,
 //!     MachineToken,
 //! };
 //!
@@ -58,7 +58,7 @@
 //!     response.gateway.code,
 //!     response.abilities,
 //! );
-//! save_token("gateway-123", &machine_token).await?;
+//! save_machine_token("harmony", &machine_token).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -68,7 +68,7 @@
 //! ```no_run
 //! use runbeam_sdk::{
 //!     RunbeamClient,
-//!     save_token,
+//!     save_machine_token,
 //!     MachineToken,
 //! };
 //!
@@ -92,7 +92,7 @@
 //!     response.gateway.code,
 //!     response.abilities,
 //! );
-//! save_token("gateway-123", &machine_token).await?;
+//! save_machine_token("harmony", &machine_token).await?;
 //! # Ok(())
 //! # }
 //! ```
@@ -110,6 +110,19 @@ pub use runbeam_api::{
         PaginatedResponse, PaginationLinks, PaginationMeta, Pipeline, Policy, ResourceResponse,
         Service, Transform,
     },
-    token_storage::{clear_token, load_token, save_token, save_token_with_key, MachineToken},
-    types::{ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, TeamInfo, UserInfo},
+    token_storage::{
+        // Generic token storage functions
+        clear_token,
+        load_token,
+        save_token,
+        // Backwards-compatible machine token functions
+        clear_machine_token,
+        load_machine_token,
+        save_machine_token,
+        save_token_with_key,
+        MachineToken,
+    },
+    types::{
+        ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, TeamInfo, UserInfo, UserToken,
+    },
 };

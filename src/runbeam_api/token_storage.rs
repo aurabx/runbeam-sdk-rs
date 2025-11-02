@@ -1,9 +1,6 @@
 use crate::storage::{EncryptedFilesystemStorage, KeyringStorage, StorageBackend, StorageError};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-/// Path where machine tokens are stored relative to storage root
-const TOKEN_STORAGE_PATH: &str = "runbeam/auth.json";
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Storage backend types
 enum StorageBackendType {
@@ -19,7 +16,11 @@ enum StorageBackendType {
 /// # Arguments
 ///
 /// * `instance_id` - Unique identifier for this application instance
-async fn get_storage_backend(instance_id: &str) -> Result<StorageBackendType, StorageError> {
+/// * `token_path` - Storage path for existence check (e.g., "runbeam/auth.json")
+async fn get_storage_backend(
+    instance_id: &str,
+    token_path: &str,
+) -> Result<StorageBackendType, StorageError> {
     // Check if keyring is disabled (e.g., in tests)
     let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
 
@@ -29,12 +30,10 @@ async fn get_storage_backend(instance_id: &str) -> Result<StorageBackendType, St
         false
     } else {
         let keyring = KeyringStorage::new("runbeam");
+        let path = token_path.to_string();
 
         // Test if keyring is available by attempting to check if token path exists
-        let test_result = tokio::task::spawn_blocking(move || {
-            keyring.exists_str(TOKEN_STORAGE_PATH)
-        })
-        .await;
+        let test_result = tokio::task::spawn_blocking(move || keyring.exists_str(&path)).await;
 
         match test_result {
             Ok(_) => {
@@ -133,6 +132,245 @@ impl MachineToken {
     }
 }
 
+// ============================================================================
+// Generic Token Storage Functions
+// ============================================================================
+
+/// Save any token using automatic secure storage selection (generic)
+///
+/// This function automatically selects the most secure available storage:
+/// 1. **Keyring** (OS keychain) if available
+/// 2. **Encrypted filesystem** if keyring is unavailable
+///
+/// # Type Parameters
+///
+/// * `T` - Any type that implements `Serialize`
+///
+/// # Arguments
+///
+/// * `instance_id` - Unique identifier for this application instance (e.g., "harmony", "runbeam-cli")
+/// * `token_type` - Token type identifier (e.g., "auth", "user_auth", "custom")
+/// * `token` - The token to save
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the token was saved successfully, or `Err(StorageError)`
+/// if the operation failed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use runbeam_sdk::{save_token, MachineToken, UserToken, UserInfo};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Save machine token
+/// let machine_token = MachineToken::new(
+///     "token123".to_string(),
+///     "2024-12-01T00:00:00Z".to_string(),
+///     "gateway-1".to_string(),
+///     "code-1".to_string(),
+///     vec!["read".to_string()],
+/// );
+/// save_token("harmony", "auth", &machine_token).await?;
+///
+/// // Save user token
+/// let user_info = UserInfo {
+///     id: "user-1".to_string(),
+///     name: "User".to_string(),
+///     email: "user@example.com".to_string(),
+/// };
+/// let user_token = UserToken::new("jwt123".to_string(), Some(3600), Some(user_info));
+/// save_token("runbeam-cli", "user_auth", &user_token).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn save_token<T>(
+    instance_id: &str,
+    token_type: &str,
+    token: &T,
+) -> Result<(), StorageError>
+where
+    T: Serialize,
+{
+    let token_path = format!("runbeam/{}.json", token_type);
+    tracing::debug!(
+        "Saving token: type={}, instance={}, path={}",
+        token_type,
+        instance_id,
+        token_path
+    );
+
+    let backend = get_storage_backend(instance_id, &token_path).await?;
+
+    // Serialize token to JSON
+    let json = serde_json::to_vec_pretty(&token).map_err(|e| {
+        tracing::error!("Failed to serialize token: {}", e);
+        StorageError::Config(format!("JSON serialization failed: {}", e))
+    })?;
+
+    // Write to storage
+    match backend {
+        StorageBackendType::Keyring(storage) => storage.write_file_str(&token_path, &json).await?,
+        StorageBackendType::Encrypted(storage) => {
+            storage.write_file_str(&token_path, &json).await?
+        }
+    }
+
+    tracing::info!(
+        "Token saved successfully: type={}, instance={}",
+        token_type,
+        instance_id
+    );
+
+    Ok(())
+}
+
+/// Load any token using automatic secure storage selection (generic)
+///
+/// This function automatically selects the most secure available storage:
+/// 1. **Keyring** (OS keychain) if available
+/// 2. **Encrypted filesystem** if keyring is unavailable
+///
+/// # Type Parameters
+///
+/// * `T` - Any type that implements `DeserializeOwned`
+///
+/// # Arguments
+///
+/// * `instance_id` - Unique identifier for this application instance
+/// * `token_type` - Token type identifier (e.g., "auth", "user_auth", "custom")
+///
+/// # Returns
+///
+/// Returns `Ok(Some(token))` if a token was found and loaded successfully,
+/// `Ok(None)` if no token file exists, or `Err(StorageError)` if loading failed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use runbeam_sdk::{load_token, MachineToken, UserToken};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Load machine token
+/// let machine_token: Option<MachineToken> = load_token("harmony", "auth").await?;
+///
+/// // Load user token
+/// let user_token: Option<UserToken> = load_token("runbeam-cli", "user_auth").await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn load_token<T>(
+    instance_id: &str,
+    token_type: &str,
+) -> Result<Option<T>, StorageError>
+where
+    T: DeserializeOwned,
+{
+    let token_path = format!("runbeam/{}.json", token_type);
+    tracing::debug!(
+        "Loading token: type={}, instance={}, path={}",
+        token_type,
+        instance_id,
+        token_path
+    );
+
+    let backend = get_storage_backend(instance_id, &token_path).await?;
+
+    // Check if token file exists
+    let exists = match &backend {
+        StorageBackendType::Keyring(storage) => storage.exists_str(&token_path),
+        StorageBackendType::Encrypted(storage) => storage.exists_str(&token_path),
+    };
+
+    if !exists {
+        tracing::debug!("No token file found: type={}", token_type);
+        return Ok(None);
+    }
+
+    // Read token file
+    let json = match backend {
+        StorageBackendType::Keyring(storage) => storage.read_file_str(&token_path).await?,
+        StorageBackendType::Encrypted(storage) => storage.read_file_str(&token_path).await?,
+    };
+
+    // Deserialize token
+    let token: T = serde_json::from_slice(&json).map_err(|e| {
+        tracing::error!("Failed to deserialize token: {}", e);
+        StorageError::Config(format!("JSON deserialization failed: {}", e))
+    })?;
+
+    tracing::debug!("Token loaded successfully: type={}", token_type);
+
+    Ok(Some(token))
+}
+
+/// Clear any token using automatic secure storage selection (generic)
+///
+/// This function automatically selects the most secure available storage:
+/// 1. **Keyring** (OS keychain) if available
+/// 2. **Encrypted filesystem** if keyring is unavailable
+///
+/// # Arguments
+///
+/// * `instance_id` - Unique identifier for this application instance
+/// * `token_type` - Token type identifier (e.g., "auth", "user_auth", "custom")
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the token was cleared successfully or didn't exist,
+/// or `Err(StorageError)` if the operation failed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use runbeam_sdk::clear_token;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// // Clear machine token
+/// clear_token("harmony", "auth").await?;
+///
+/// // Clear user token
+/// clear_token("runbeam-cli", "user_auth").await?;
+/// # Ok(())
+/// # }
+/// ```
+pub async fn clear_token(instance_id: &str, token_type: &str) -> Result<(), StorageError> {
+    let token_path = format!("runbeam/{}.json", token_type);
+    tracing::debug!(
+        "Clearing token: type={}, instance={}, path={}",
+        token_type,
+        instance_id,
+        token_path
+    );
+
+    let backend = get_storage_backend(instance_id, &token_path).await?;
+
+    // Check if token file exists
+    let exists = match &backend {
+        StorageBackendType::Keyring(storage) => storage.exists_str(&token_path),
+        StorageBackendType::Encrypted(storage) => storage.exists_str(&token_path),
+    };
+
+    if !exists {
+        tracing::debug!("No token file to clear: type={}", token_type);
+        return Ok(());
+    }
+
+    // Remove the token file
+    match backend {
+        StorageBackendType::Keyring(storage) => storage.remove_str(&token_path).await?,
+        StorageBackendType::Encrypted(storage) => storage.remove_str(&token_path).await?,
+    }
+
+    tracing::info!("Token cleared successfully: type={}", token_type);
+
+    Ok(())
+}
+
+// ============================================================================
+// Backwards-Compatible Machine Token Functions
+// ============================================================================
+
 /// Save a machine token with an explicit encryption key
 ///
 /// This function uses the provided encryption key for token storage instead of
@@ -154,6 +392,7 @@ pub async fn save_token_with_key(
     token: &MachineToken,
     encryption_key: &str,
 ) -> Result<(), StorageError> {
+    let token_path = "runbeam/auth.json";
     tracing::debug!(
         "Saving machine token with explicit encryption key: gateway={}, instance={}",
         token.gateway_code,
@@ -169,10 +408,8 @@ pub async fn save_token_with_key(
         None
     } else {
         let keyring = KeyringStorage::new("runbeam");
-        let test_result = tokio::task::spawn_blocking(move || {
-            keyring.exists_str(TOKEN_STORAGE_PATH)
-        })
-        .await;
+        let path = token_path.to_string();
+        let test_result = tokio::task::spawn_blocking(move || keyring.exists_str(&path)).await;
 
         match test_result {
             Ok(_) => {
@@ -180,7 +417,10 @@ pub async fn save_token_with_key(
                 Some(StorageBackendType::Keyring(KeyringStorage::new("runbeam")))
             }
             Err(e) => {
-                tracing::debug!("Keyring unavailable ({}), using encrypted filesystem with provided key", e);
+                tracing::debug!(
+                    "Keyring unavailable ({}), using encrypted filesystem with provided key",
+                    e
+                );
                 None
             }
         }
@@ -207,11 +447,9 @@ pub async fn save_token_with_key(
 
     // Write to storage
     match backend {
-        StorageBackendType::Keyring(storage) => {
-            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
-        }
+        StorageBackendType::Keyring(storage) => storage.write_file_str(token_path, &json).await?,
         StorageBackendType::Encrypted(storage) => {
-            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
+            storage.write_file_str(token_path, &json).await?
         }
     }
 
@@ -225,6 +463,8 @@ pub async fn save_token_with_key(
 }
 
 /// Save a machine token using automatic secure storage selection
+///
+/// **Backwards-compatible wrapper** for `save_token(instance_id, "auth", token)`.
 ///
 /// This function automatically selects the most secure available storage:
 /// 1. **Keyring** (OS keychain) if available
@@ -247,37 +487,16 @@ pub async fn save_token_with_key(
 ///
 /// Returns `Ok(())` if the token was saved successfully, or `Err(StorageError)`
 /// if the operation failed.
-pub async fn save_token(instance_id: &str, token: &MachineToken) -> Result<(), StorageError> {
-    tracing::debug!("Saving machine token for gateway: {} (instance: {})", token.gateway_code, instance_id);
-
-    let backend = get_storage_backend(instance_id).await?;
-
-    // Serialize token to JSON
-    let json = serde_json::to_vec_pretty(&token).map_err(|e| {
-        tracing::error!("Failed to serialize machine token: {}", e);
-        StorageError::Config(format!("JSON serialization failed: {}", e))
-    })?;
-
-    // Write to storage
-    match backend {
-        StorageBackendType::Keyring(storage) => {
-            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
-        }
-        StorageBackendType::Encrypted(storage) => {
-            storage.write_file_str(TOKEN_STORAGE_PATH, &json).await?
-        }
-    }
-
-    tracing::info!(
-        "Machine token saved successfully: gateway_id={}, expires_at={}",
-        token.gateway_id,
-        token.expires_at
-    );
-
-    Ok(())
+pub async fn save_machine_token(
+    instance_id: &str,
+    token: &MachineToken,
+) -> Result<(), StorageError> {
+    save_token(instance_id, "auth", token).await
 }
 
 /// Load a machine token using automatic secure storage selection
+///
+/// **Backwards-compatible wrapper** for `load_token(instance_id, "auth")`.
 ///
 /// This function automatically selects the most secure available storage:
 /// 1. **Keyring** (OS keychain) if available
@@ -294,49 +513,15 @@ pub async fn save_token(instance_id: &str, token: &MachineToken) -> Result<(), S
 ///
 /// Returns `Ok(Some(token))` if a token was found and loaded successfully,
 /// `Ok(None)` if no token file exists, or `Err(StorageError)` if loading failed.
-pub async fn load_token(instance_id: &str) -> Result<Option<MachineToken>, StorageError> {
-    tracing::debug!("Loading machine token from secure storage (instance: {})", instance_id);
-
-    let backend = get_storage_backend(instance_id).await?;
-
-    // Check if token file exists
-    let exists = match &backend {
-        StorageBackendType::Keyring(storage) => storage.exists_str(TOKEN_STORAGE_PATH),
-        StorageBackendType::Encrypted(storage) => storage.exists_str(TOKEN_STORAGE_PATH),
-    };
-
-    if !exists {
-        tracing::debug!("No machine token file found");
-        return Ok(None);
-    }
-
-    // Read token file
-    let json = match backend {
-        StorageBackendType::Keyring(storage) => {
-            storage.read_file_str(TOKEN_STORAGE_PATH).await?
-        }
-        StorageBackendType::Encrypted(storage) => {
-            storage.read_file_str(TOKEN_STORAGE_PATH).await?
-        }
-    };
-
-    // Deserialize token
-    let token: MachineToken = serde_json::from_slice(&json).map_err(|e| {
-        tracing::error!("Failed to deserialize machine token: {}", e);
-        StorageError::Config(format!("JSON deserialization failed: {}", e))
-    })?;
-
-    tracing::debug!(
-        "Machine token loaded: gateway_id={}, expires_at={}, valid={}",
-        token.gateway_id,
-        token.expires_at,
-        token.is_valid()
-    );
-
-    Ok(Some(token))
+pub async fn load_machine_token(
+    instance_id: &str,
+) -> Result<Option<MachineToken>, StorageError> {
+    load_token(instance_id, "auth").await
 }
 
 /// Clear the machine token using automatic secure storage selection
+///
+/// **Backwards-compatible wrapper** for `clear_token(instance_id, "auth")`.
 ///
 /// This function automatically selects the most secure available storage:
 /// 1. **Keyring** (OS keychain) if available
@@ -352,35 +537,8 @@ pub async fn load_token(instance_id: &str) -> Result<Option<MachineToken>, Stora
 ///
 /// Returns `Ok(())` if the token was cleared successfully or didn't exist,
 /// or `Err(StorageError)` if the operation failed.
-pub async fn clear_token(instance_id: &str) -> Result<(), StorageError> {
-    tracing::debug!("Clearing machine token from secure storage (instance: {})", instance_id);
-
-    let backend = get_storage_backend(instance_id).await?;
-
-    // Check if token file exists
-    let exists = match &backend {
-        StorageBackendType::Keyring(storage) => storage.exists_str(TOKEN_STORAGE_PATH),
-        StorageBackendType::Encrypted(storage) => storage.exists_str(TOKEN_STORAGE_PATH),
-    };
-
-    if !exists {
-        tracing::debug!("No machine token file to clear");
-        return Ok(());
-    }
-
-    // Remove the token file
-    match backend {
-        StorageBackendType::Keyring(storage) => {
-            storage.remove_str(TOKEN_STORAGE_PATH).await?
-        }
-        StorageBackendType::Encrypted(storage) => {
-            storage.remove_str(TOKEN_STORAGE_PATH).await?
-        }
-    }
-
-    tracing::info!("Machine token cleared successfully");
-
-    Ok(())
+pub async fn clear_machine_token(instance_id: &str) -> Result<(), StorageError> {
+    clear_token(instance_id, "auth").await
 }
 
 #[cfg(test)]
@@ -483,7 +641,7 @@ mod tests {
         let _guard = setup_test_encryption();
         let instance_id = "test-save-load";
         // Clear any existing token first
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         let token = MachineToken::new(
             "test_token_secure".to_string(),
@@ -493,11 +651,11 @@ mod tests {
             vec!["harmony:send".to_string()],
         );
 
-        // Save token using automatic secure storage
-        save_token(instance_id, &token).await.unwrap();
+        // Save token using automatic secure storage (wrapper)
+        save_machine_token(instance_id, &token).await.unwrap();
 
-        // Load token using automatic secure storage
-        let loaded = load_token(instance_id).await.unwrap();
+        // Load token using automatic secure storage (wrapper)
+        let loaded = load_machine_token(instance_id).await.unwrap();
         assert!(loaded.is_some());
 
         let loaded_token = loaded.unwrap();
@@ -507,7 +665,7 @@ mod tests {
         assert!(loaded_token.is_valid());
 
         // Cleanup
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -516,10 +674,10 @@ mod tests {
         let _guard = setup_test_encryption();
         let instance_id = "test-nonexistent";
         // Clear any existing token
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         // Load from empty storage should return None
-        let result = load_token(instance_id).await.unwrap();
+        let result = load_machine_token(instance_id).await.unwrap();
         assert!(result.is_none());
     }
 
@@ -529,7 +687,7 @@ mod tests {
         let _guard = setup_test_encryption();
         let instance_id = "test-clear";
         // Clear any existing token first
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         let token = MachineToken::new(
             "test_clear".to_string(),
@@ -540,16 +698,16 @@ mod tests {
         );
 
         // Save token
-        save_token(instance_id, &token).await.unwrap();
+        save_machine_token(instance_id, &token).await.unwrap();
 
         // Verify it exists
-        assert!(load_token(instance_id).await.unwrap().is_some());
+        assert!(load_machine_token(instance_id).await.unwrap().is_some());
 
         // Clear token
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
 
         // Verify it's gone
-        assert!(load_token(instance_id).await.unwrap().is_none());
+        assert!(load_machine_token(instance_id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -558,7 +716,7 @@ mod tests {
         let _guard = setup_test_encryption();
         let instance_id = "test-clear-nonexistent";
         // Clear token that doesn't exist should not error
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -566,7 +724,7 @@ mod tests {
     async fn test_token_expiry_detection() {
         let _guard = setup_test_encryption();
         let instance_id = "test-expiry";
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         // Create expired token
         let expired_token = MachineToken::new(
@@ -577,17 +735,17 @@ mod tests {
             vec![],
         );
 
-        save_token(instance_id, &expired_token).await.unwrap();
+        save_machine_token(instance_id, &expired_token).await.unwrap();
 
         // Load and verify it's marked as expired
-        let loaded = load_token(instance_id).await.unwrap();
+        let loaded = load_machine_token(instance_id).await.unwrap();
         assert!(loaded.is_some());
         let loaded_token = loaded.unwrap();
         assert!(loaded_token.is_expired());
         assert!(!loaded_token.is_valid());
 
         // Cleanup
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -595,7 +753,7 @@ mod tests {
     async fn test_token_with_abilities() {
         let _guard = setup_test_encryption();
         let instance_id = "test-abilities";
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         let token = MachineToken::new(
             "token_with_abilities".to_string(),
@@ -609,16 +767,16 @@ mod tests {
             ],
         );
 
-        save_token(instance_id, &token).await.unwrap();
+        save_machine_token(instance_id, &token).await.unwrap();
 
-        let loaded = load_token(instance_id).await.unwrap().unwrap();
+        let loaded = load_machine_token(instance_id).await.unwrap().unwrap();
         assert_eq!(loaded.abilities.len(), 3);
         assert!(loaded.abilities.contains(&"harmony:send".to_string()));
         assert!(loaded.abilities.contains(&"harmony:receive".to_string()));
         assert!(loaded.abilities.contains(&"harmony:config".to_string()));
 
         // Cleanup
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -626,7 +784,7 @@ mod tests {
     async fn test_token_overwrites_existing() {
         let _guard = setup_test_encryption();
         let instance_id = "test-overwrite";
-        let _ = clear_token(instance_id).await;
+        let _ = clear_machine_token(instance_id).await;
 
         // Save first token
         let token1 = MachineToken::new(
@@ -636,7 +794,7 @@ mod tests {
             "first-gateway".to_string(),
             vec![],
         );
-        save_token(instance_id, &token1).await.unwrap();
+        save_machine_token(instance_id, &token1).await.unwrap();
 
         // Save second token (should overwrite)
         let token2 = MachineToken::new(
@@ -646,16 +804,16 @@ mod tests {
             "second-gateway".to_string(),
             vec![],
         );
-        save_token(instance_id, &token2).await.unwrap();
+        save_machine_token(instance_id, &token2).await.unwrap();
 
         // Should load second token
-        let loaded = load_token(instance_id).await.unwrap().unwrap();
+        let loaded = load_machine_token(instance_id).await.unwrap().unwrap();
         assert_eq!(loaded.machine_token, "second_token");
         assert_eq!(loaded.gateway_id, "gw_second");
         assert_eq!(loaded.gateway_code, "second-gateway");
 
         // Cleanup
-        clear_token(instance_id).await.unwrap();
+        clear_machine_token(instance_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -963,5 +1121,123 @@ mod tests {
             result.is_err(),
             "Loading tampered encrypted file should fail"
         );
+    }
+
+    // ========================================================================
+    // Generic Token Storage Tests
+    // ========================================================================
+
+    #[tokio::test]
+    #[serial]
+    async fn test_generic_save_and_load_user_token() {
+        use crate::runbeam_api::types::UserToken;
+        let _guard = setup_test_encryption();
+        let instance_id = "test-user-token";
+        clear_token(instance_id, "user_auth").await.ok();
+
+        let user_token = UserToken::new(
+            "user_jwt_token".to_string(),
+            Some(1234567890),
+            Some(crate::runbeam_api::types::UserInfo {
+                id: "user123".to_string(),
+                name: "Test User".to_string(),
+                email: "test@example.com".to_string(),
+            }),
+        );
+
+        // Save using generic function
+        save_token(instance_id, "user_auth", &user_token)
+            .await
+            .unwrap();
+
+        // Load using generic function
+        let loaded: Option<UserToken> = load_token(instance_id, "user_auth").await.unwrap();
+        assert!(loaded.is_some());
+
+        let loaded_token = loaded.unwrap();
+        assert_eq!(loaded_token.token, user_token.token);
+        assert_eq!(loaded_token.expires_at, user_token.expires_at);
+        assert!(loaded_token.user.is_some());
+
+        // Cleanup
+        clear_token(instance_id, "user_auth").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_different_token_types_isolated() {
+        use crate::runbeam_api::types::UserToken;
+        let _guard = setup_test_encryption();
+        let instance_id = "test-isolation";
+
+        // Create different token types
+        let user_token = UserToken::new("user_token".to_string(), None, None);
+
+        let machine_token = MachineToken::new(
+            "machine_token".to_string(),
+            "2099-12-31T23:59:59Z".to_string(),
+            "gw_test".to_string(),
+            "test-gw".to_string(),
+            vec![],
+        );
+
+        // Save both
+        save_token(instance_id, "user_auth", &user_token)
+            .await
+            .unwrap();
+        save_token(instance_id, "auth", &machine_token)
+            .await
+            .unwrap();
+
+        // Load both - should be independent
+        let loaded_user: Option<UserToken> = load_token(instance_id, "user_auth").await.unwrap();
+        let loaded_machine: Option<MachineToken> = load_token(instance_id, "auth").await.unwrap();
+
+        assert!(loaded_user.is_some());
+        assert!(loaded_machine.is_some());
+        assert_eq!(loaded_user.unwrap().token, "user_token");
+        assert_eq!(loaded_machine.unwrap().machine_token, "machine_token");
+
+        // Cleanup
+        clear_token(instance_id, "user_auth").await.unwrap();
+        clear_token(instance_id, "auth").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_user_token_with_full_metadata() {
+        use crate::runbeam_api::types::UserToken;
+        let _guard = setup_test_encryption();
+        let instance_id = "test-user-full";
+        clear_token(instance_id, "user_auth").await.ok();
+
+        let user_token = UserToken::new(
+            "detailed_user_token".to_string(),
+            Some(2000000000),
+            Some(crate::runbeam_api::types::UserInfo {
+                id: "user456".to_string(),
+                name: "John Doe".to_string(),
+                email: "john@example.com".to_string(),
+            }),
+        );
+
+        // Save and load
+        save_token(instance_id, "user_auth", &user_token)
+            .await
+            .unwrap();
+        let loaded: Option<UserToken> = load_token(instance_id, "user_auth").await.unwrap();
+
+        assert!(loaded.is_some());
+        let loaded_token = loaded.unwrap();
+        assert_eq!(loaded_token.token, "detailed_user_token");
+        assert_eq!(loaded_token.expires_at, Some(2000000000));
+
+        let user_info = loaded_token.user.unwrap();
+        assert_eq!(user_info.id, "user456");
+        assert_eq!(user_info.name, "John Doe");
+        assert_eq!(user_info.email, "john@example.com");
+
+        // Cleanup
+        clear_token(instance_id, "user_auth").await.unwrap();
     }
 }

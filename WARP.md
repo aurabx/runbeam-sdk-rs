@@ -10,7 +10,8 @@ The SDK handles:
 - JWT token validation using RS256 with JWKS endpoint discovery
 - Laravel Sanctum API token support
 - Runbeam Cloud API client for gateway authorization
-- Machine token storage and lifecycle management
+- Generic secure token storage with automatic encryption and OS keyring integration
+- Machine token and user token storage and lifecycle management
 - Type definitions for API requests/responses and error handling
 
 ## Architecture
@@ -22,8 +23,8 @@ The codebase is organized as a library crate (`src/lib.rs`) with the main implem
 - **`mod.rs`** - Module exports and authorization flow documentation
 - **`client.rs`** - `RunbeamClient` HTTP client for Runbeam Cloud API operations
 - **`jwt.rs`** - JWT validation with RS256 algorithm and JWKS caching
-- **`token_storage.rs`** - Machine token persistence operations
-- **`types.rs`** - Error types (`RunbeamError`, `ApiError`) and API response structures
+- **`token_storage.rs`** - Generic secure token persistence with keyring and encrypted filesystem support
+- **`types.rs`** - Error types (`RunbeamError`, `ApiError`), token types (`MachineToken`, `UserToken`), and API response structures
 - **`resources.rs`** - Resource structs matching API v1.2 schemas (Gateway, Service, Endpoint, Backend, Pipeline, Change, etc.)
 
 ### Authorization Flow
@@ -86,10 +87,15 @@ All endpoints accept JWT tokens, Sanctum API tokens, or machine tokens for authe
 
 **Storage Abstraction:**
 - `StorageBackend` trait defines async storage operations (write, read, exists, remove)
-- Two implementations: `KeyringStorage` (secure) and `FilesystemStorage` (fallback)
-- Tokens stored at `runbeam/auth.json` identifier (keyring) or relative path (filesystem)
-- `MachineToken` struct includes expiry validation methods
+- Two implementations: `KeyringStorage` (secure) and `FilesystemStorage` (encrypted fallback)
+- Generic token storage: `save_token_generic`, `load_token_generic`, `clear_token_generic` accept any serializable token type
+- Multiple token types supported: machine tokens (`runbeam/machine_token.json`), user tokens (`runbeam/user_token.json`)
+- `KeyringStorage` uses OS-native credential stores (Keychain, Secret Service, Credential Manager)
+- `FilesystemStorage` provides encrypted storage with ChaCha20-Poly1305 and argon2 key derivation
+- Automatic encryption key generation and secure storage in OS keyring
+- `MachineToken` and `UserToken` structs include expiry validation methods
 - Uses boxed futures (`Pin<Box<dyn Future>>`) for trait object safety
+- Backwards-compatible wrappers: `save_machine_token`, `load_machine_token`, `clear_machine_token`
 
 ## Development Commands
 
@@ -133,16 +139,78 @@ cargo test runbeam_api::jwt::tests::     # Run all tests in jwt module
 ## Important Implementation Notes
 
 ### Secure Storage
-The SDK uses OS-native credential stores for secure token storage via the `keyring` crate:
-- **macOS**: Keychain
-- **Linux**: Secret Service API (freedesktop.org)
-- **Windows**: Credential Manager
 
-Two storage backends are provided:
-- `KeyringStorage` - For production use with secure credential storage
-- `FilesystemStorage` - For development/testing or when keyring is unavailable
+The SDK provides **generic secure token storage** that works with any serializable token type. Storage automatically selects the best available backend and handles encryption transparently.
 
-Both implement the `StorageBackend` trait with boxed futures for trait object compatibility.
+#### Storage Backends
+
+Two storage backends are provided, both implementing the `StorageBackend` trait:
+
+**1. KeyringStorage (Primary)**
+- Uses OS-native credential stores via the `keyring` crate:
+  - **macOS**: Keychain
+  - **Linux**: Secret Service API (freedesktop.org)
+  - **Windows**: Credential Manager
+- Tokens stored as JSON at identifier: `runbeam/{token_type}.json`
+- No encryption needed (OS handles security)
+- Production-ready and recommended for all deployments
+
+**2. FilesystemStorage (Automatic Fallback)**
+- Encrypted JSON storage using ChaCha20-Poly1305 AEAD
+- Encryption key derived using Argon2id with random salt
+- Key stored securely in OS keyring at `runbeam/encryption_key`
+- Automatic fallback when keyring unavailable (e.g., headless systems, CI/CD)
+- Tokens stored at: `~/.runbeam/{token_type}.json` (encrypted)
+
+#### Generic Token Storage API
+
+The SDK provides generic functions that work with any token type:
+
+```rust
+use runbeam_sdk::{
+    save_token_generic,
+    load_token_generic,
+    clear_token_generic,
+    storage::KeyringStorage,
+    UserToken,
+};
+
+// Save any token type
+let storage = KeyringStorage::new("runbeam");
+let user_token = UserToken::new("eyJhbGci...".to_string(), 3600, user_info);
+save_token_generic(&storage, &user_token, "user_token").await?;
+
+// Load token with automatic type inference
+let loaded: Option<UserToken> = load_token_generic(&storage, "user_token").await?;
+
+// Clear token
+clear_token_generic::<UserToken>(&storage, "user_token").await?;
+```
+
+#### Backwards Compatibility
+
+Legacy machine token functions are preserved for backwards compatibility:
+
+```rust
+use runbeam_sdk::{save_machine_token, load_machine_token, MachineToken};
+
+// Old API still works (calls generic storage internally)
+let token = MachineToken::new(...);
+save_machine_token(&storage, &token).await?;
+let loaded = load_machine_token(&storage).await?;
+```
+
+#### Security Features
+
+- **Automatic backend selection**: Tries keyring first, falls back to encrypted filesystem
+- **Transparent encryption**: Filesystem storage automatically encrypts/decrypts tokens
+- **Key derivation**: Argon2id with random salt prevents rainbow table attacks
+- **AEAD encryption**: ChaCha20-Poly1305 provides authenticated encryption
+- **Secure key storage**: Encryption keys stored in OS keyring, never on disk in plaintext
+- **Token isolation**: Different token types stored separately by name
+- **No plaintext**: Tokens never written to disk without encryption (except in OS keyring)
+
+Both backends implement the `StorageBackend` trait with boxed futures for trait object compatibility.
 
 ### API Documentation
 The OpenAPI 3.1.0 specification for the Runbeam API v1.2 is available in `docs/v1-2.json` and includes detailed endpoint documentation, authentication methods, and data schemas. This SDK is compatible with API version 1.2.
@@ -155,14 +223,66 @@ The project uses Rust edition 2024, which may require a recent nightly or future
 
 ## Usage Examples
 
+### User Token Storage
+
+The SDK provides secure storage for user authentication tokens (JWT or Sanctum). User tokens are stored separately from machine tokens and can be saved/loaded independently.
+
+```rust
+use runbeam_sdk::{
+    save_token_generic,
+    load_token_generic,
+    clear_token_generic,
+    storage::KeyringStorage,
+    UserToken,
+    UserInfo,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let storage = KeyringStorage::new("runbeam");
+    
+    // Create user info from authentication
+    let user_info = UserInfo {
+        id: "user-123".to_string(),
+        name: "John Doe".to_string(),
+        email: "john@example.com".to_string(),
+    };
+    
+    // Save user token securely
+    let user_token = UserToken::new(
+        "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...".to_string(),
+        3600,  // expires_in seconds
+        user_info,
+    );
+    save_token_generic(&storage, &user_token, "user_token").await?;
+    println!("User token saved securely");
+    
+    // Load user token later
+    if let Some(token) = load_token_generic::<UserToken>(&storage, "user_token").await? {
+        if token.is_valid() {
+            println!("User: {} ({})", token.user.name, token.user.email);
+            println!("Token expires at: {}", token.expires_at);
+            
+            // Use token for API calls
+            // let response = client.some_api_call(&token.token).await?;
+        } else {
+            println!("Token expired, re-authentication required");
+            clear_token_generic::<UserToken>(&storage, "user_token").await?;
+        }
+    }
+    
+    Ok(())
+}
+```
+
 ### JWT Token Authentication (Legacy)
 
 ```rust
 use runbeam_sdk::{
     RunbeamClient,
     validate_jwt_token,
-    save_token,
-    load_token,
+    save_machine_token,  // Backwards-compatible wrapper
+    load_machine_token,  // Backwards-compatible wrapper
     MachineToken,
     storage::KeyringStorage,
 };
@@ -184,7 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     ).await?;
     
-    // 4. Save machine token securely in OS keyring
+    // 4. Save machine token securely (automatically uses keyring or encrypted filesystem)
     let storage = KeyringStorage::new("runbeam");
     let machine_token = MachineToken::new(
         response.machine_token,
@@ -193,10 +313,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         response.gateway.code,
         response.abilities,
     );
-    save_token(&storage, &machine_token).await?;
+    save_machine_token(&storage, &machine_token).await?;
     
-    // 5. Later, load the token from storage
-    if let Some(token) = load_token(&storage).await? {
+    // 5. Later, load the token from secure storage
+    if let Some(token) = load_machine_token(&storage).await? {
         if token.is_valid() {
             println!("Token is valid, expires at: {}", token.expires_at);
         } else {
@@ -213,8 +333,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use runbeam_sdk::{
     RunbeamClient,
-    save_token,
-    load_token,
+    save_machine_token,  // Backwards-compatible wrapper
+    load_machine_token,  // Backwards-compatible wrapper
     MachineToken,
     storage::KeyringStorage,
 };
@@ -234,7 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     ).await?;
     
-    // 3. Save machine token securely in OS keyring
+    // 3. Save machine token securely (automatically uses keyring or encrypted filesystem)
     let storage = KeyringStorage::new("runbeam");
     let machine_token = MachineToken::new(
         response.machine_token,
@@ -243,10 +363,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         response.gateway.code,
         response.abilities,
     );
-    save_token(&storage, &machine_token).await?;
+    save_machine_token(&storage, &machine_token).await?;
     
     // 4. Use the machine token for subsequent API calls
-    if let Some(token) = load_token(&storage).await? {
+    if let Some(token) = load_machine_token(&storage).await? {
         if token.is_valid() {
             // Use machine token with any API method
             let gateways = client.list_gateways(&token.machine_token).await?;
@@ -299,6 +419,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Migration and Upgrade Guide
+
+#### Upgrading from SDK v0.2.x to v0.3.x
+
+SDK v0.3.0 introduced **generic secure token storage** with automatic encryption and backwards compatibility. Existing applications using machine token storage will continue to work without changes.
+
+**What Changed:**
+- Token storage is now generic and supports multiple token types (machine tokens, user tokens, custom types)
+- FilesystemStorage now encrypts tokens automatically using ChaCha20-Poly1305 AEAD
+- Encryption keys are stored securely in OS keyring
+- Legacy function names (`save_token`, `load_token`) are now wrappers calling generic storage
+
+**No Breaking Changes:**
+All existing code continues to work:
+```rust
+// This still works exactly as before
+use runbeam_sdk::{save_machine_token, load_machine_token};
+
+save_machine_token(&storage, &token).await?;
+let token = load_machine_token(&storage).await?;
+```
+
+**New Capabilities:**
+You can now store user tokens and other token types securely:
+```rust
+// New in v0.3.0: User token storage
+use runbeam_sdk::{save_token_generic, load_token_generic, UserToken};
+
+save_token_generic(&storage, &user_token, "user_token").await?;
+let token: Option<UserToken> = load_token_generic(&storage, "user_token").await?;
+```
+
+#### Migration for CLI Applications
+
+The `runbeam-cli` automatically migrates legacy plaintext token files to secure storage:
+
+1. **First run after upgrade**: CLI detects `~/.runbeam/auth.json` (plaintext)
+2. **Automatic migration**: Token is loaded and saved to secure storage (keyring or encrypted filesystem)
+3. **Cleanup**: Legacy plaintext file is removed
+4. **Subsequent runs**: CLI loads tokens from secure storage only
+
+**No user action required** - migration happens automatically on first run.
+
+#### Custom Token Types
+
+You can now store any serializable token type:
+
+```rust
+use serde::{Deserialize, Serialize};
+use runbeam_sdk::{save_token_generic, load_token_generic};
+
+#[derive(Serialize, Deserialize)]
+struct CustomToken {
+    access_token: String,
+    refresh_token: String,
+    expires_at: i64,
+}
+
+// Save custom token
+let custom = CustomToken { /* ... */ };
+save_token_generic(&storage, &custom, "custom_token").await?;
+
+// Load custom token
+let loaded: Option<CustomToken> = load_token_generic(&storage, "custom_token").await?;
+```
+
 ### Using with Harmony Proxy
 
 When integrating back into `harmony-proxy`, import the SDK:
@@ -313,6 +499,8 @@ use runbeam_sdk::{
     RunbeamClient,
     validate_jwt_token,
     storage::KeyringStorage,
+    save_machine_token,
+    load_machine_token,
 };
 ```
 
@@ -323,7 +511,7 @@ The SDK provides comprehensive support for the Change Management API (v1.2):
 #### Polling for Configuration Changes
 
 ```rust
-use runbeam_sdk::{RunbeamClient, load_token, storage::KeyringStorage};
+use runbeam_sdk::{RunbeamClient, load_machine_token, storage::KeyringStorage};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -331,7 +519,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = KeyringStorage::new("runbeam");
     
     // Load machine token
-    let token = load_token(&storage).await?
+    let token = load_machine_token(&storage).await?
         .expect("Machine token not found");
     
     // Get the base URL for changes API (service discovery)
@@ -401,7 +589,7 @@ fn apply_change_to_gateway(change: &Change) -> Result<(), Box<dyn std::error::Er
 #### Continuous Change Polling Loop
 
 ```rust
-use runbeam_sdk::{RunbeamClient, load_token, storage::KeyringStorage};
+use runbeam_sdk::{RunbeamClient, load_machine_token, storage::KeyringStorage};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -412,7 +600,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     loop {
         // Load machine token (checks expiry)
-        let Some(token) = load_token(&storage).await? else {
+        let Some(token) = load_machine_token(&storage).await? else {
             eprintln!("No machine token found, sleeping...");
             sleep(Duration::from_secs(60)).await;
             continue;
