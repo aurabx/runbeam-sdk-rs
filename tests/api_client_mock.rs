@@ -19,7 +19,7 @@
 use runbeam_sdk::RunbeamClient;
 use serde_json::json;
 use wiremock::{
-    matchers::{method, path, header, body_json},
+    matchers::{body_json, header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -145,7 +145,10 @@ async fn test_authorize_gateway_with_optional_parameters() {
             "test_token",
             "test-gateway",
             Some("pubkey123".to_string()),
-            Some(vec!["version:1.0".to_string(), "hostname:test-host".to_string()]),
+            Some(vec![
+                "version:1.0".to_string(),
+                "hostname:test-host".to_string(),
+            ]),
         )
         .await;
 
@@ -784,7 +787,10 @@ async fn test_list_backends_success() {
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response.data.len(), 1);
-    assert_eq!(response.data[0].url, Some("https://api.example.com".to_string()));
+    assert_eq!(
+        response.data[0].url,
+        Some("https://api.example.com".to_string())
+    );
     assert_eq!(response.data[0].timeout_seconds, Some(30));
 }
 
@@ -964,7 +970,9 @@ async fn test_get_config_change_by_id() {
         .await;
 
     let client = RunbeamClient::new(mock_server.uri());
-    let result = client.get_config_change("machine_token", "config-change-123").await;
+    let result = client
+        .get_config_change("machine_token", "config-change-123")
+        .await;
 
     assert!(result.is_ok());
     let change = result.unwrap();
@@ -983,7 +991,9 @@ async fn test_acknowledge_config_change_success() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/api/harmony/config-changes/config-change-456/acknowledge"))
+        .and(path(
+            "/api/harmony/config-changes/config-change-456/acknowledge",
+        ))
         .and(header("Authorization", "Bearer machine_token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
@@ -991,7 +1001,9 @@ async fn test_acknowledge_config_change_success() {
         .await;
 
     let client = RunbeamClient::new(mock_server.uri());
-    let result = client.acknowledge_config_change("machine_token", "config-change-456").await;
+    let result = client
+        .acknowledge_config_change("machine_token", "config-change-456")
+        .await;
 
     assert!(result.is_ok());
     let ack = result.unwrap();
@@ -1009,7 +1021,9 @@ async fn test_report_config_applied_success() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/api/harmony/config-changes/config-change-789/applied"))
+        .and(path(
+            "/api/harmony/config-changes/config-change-789/applied",
+        ))
         .and(header("Authorization", "Bearer machine_token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
@@ -1017,7 +1031,9 @@ async fn test_report_config_applied_success() {
         .await;
 
     let client = RunbeamClient::new(mock_server.uri());
-    let result = client.report_config_applied("machine_token", "config-change-789").await;
+    let result = client
+        .report_config_applied("machine_token", "config-change-789")
+        .await;
 
     assert!(result.is_ok());
     let ack = result.unwrap();
@@ -1043,11 +1059,13 @@ async fn test_report_config_failed_success() {
         .await;
 
     let client = RunbeamClient::new(mock_server.uri());
-    let result = client.report_config_failed(
-        "machine_token",
-        "config-change-999",
-        "Failed to apply configuration"
-    ).await;
+    let result = client
+        .report_config_failed(
+            "machine_token",
+            "config-change-999",
+            "Failed to apply configuration",
+        )
+        .await;
 
     assert!(result.is_ok());
     let ack = result.unwrap();

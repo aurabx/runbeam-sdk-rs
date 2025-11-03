@@ -111,14 +111,14 @@ pub use runbeam_api::{
         Service, Transform,
     },
     token_storage::{
-        // Generic token storage functions
-        clear_token,
-        load_token,
-        save_token,
         // Backwards-compatible machine token functions
         clear_machine_token,
+        // Generic token storage functions
+        clear_token,
         load_machine_token,
+        load_token,
         save_machine_token,
+        save_token,
         save_token_with_key,
         MachineToken,
     },

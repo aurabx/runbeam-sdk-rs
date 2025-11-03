@@ -409,7 +409,9 @@ impl EncryptedFilesystemStorage {
     ) -> Result<(age::x25519::Recipient, age::x25519::Identity), StorageError> {
         // Try environment variable first
         if let Ok(key_base64) = std::env::var("RUNBEAM_ENCRYPTION_KEY") {
-            tracing::debug!("Using encryption key from RUNBEAM_ENCRYPTION_KEY environment variable");
+            tracing::debug!(
+                "Using encryption key from RUNBEAM_ENCRYPTION_KEY environment variable"
+            );
             return Self::load_key_from_string(&key_base64);
         }
 
@@ -492,9 +494,9 @@ impl EncryptedFilesystemStorage {
         }
 
         // Write key to file
-        tokio::fs::write(key_path, &key_base64).await.map_err(|e| {
-            StorageError::KeyStorage(format!("Failed to write key file: {}", e))
-        })?;
+        tokio::fs::write(key_path, &key_base64)
+            .await
+            .map_err(|e| StorageError::KeyStorage(format!("Failed to write key file: {}", e)))?;
 
         // Set restrictive permissions on Unix (0600)
         #[cfg(unix)]
@@ -536,9 +538,9 @@ impl EncryptedFilesystemStorage {
             .write_all(data)
             .map_err(|e| StorageError::Encryption(format!("Failed to encrypt data: {}", e)))?;
 
-        writer
-            .finish()
-            .map_err(|e| StorageError::Encryption(format!("Failed to finalize encryption: {}", e)))?;
+        writer.finish().map_err(|e| {
+            StorageError::Encryption(format!("Failed to finalize encryption: {}", e))
+        })?;
 
         Ok(encrypted)
     }
@@ -563,9 +565,9 @@ impl EncryptedFilesystemStorage {
             .decrypt(std::iter::once(&self.identity as &dyn age::Identity))
             .map_err(|e| StorageError::Encryption(format!("Failed to decrypt data: {}", e)))?;
 
-        reader
-            .read_to_end(&mut decrypted)
-            .map_err(|e| StorageError::Encryption(format!("Failed to read decrypted data: {}", e)))?;
+        reader.read_to_end(&mut decrypted).map_err(|e| {
+            StorageError::Encryption(format!("Failed to read decrypted data: {}", e))
+        })?;
 
         Ok(decrypted)
     }
@@ -635,8 +637,8 @@ impl StorageBackend for EncryptedFilesystemStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use serial_test::serial;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn test_filesystem_storage_write_and_read() {
@@ -736,7 +738,10 @@ mod tests {
             .unwrap();
 
         let test_data = b"sensitive data";
-        storage.write_file_str("secret.txt", test_data).await.unwrap();
+        storage
+            .write_file_str("secret.txt", test_data)
+            .await
+            .unwrap();
 
         assert!(storage.exists_str("secret.txt"));
 
@@ -757,7 +762,7 @@ mod tests {
         // Read the raw file to verify it's encrypted (not plaintext)
         let file_path = temp_dir.path().join("data.bin");
         let raw_contents = std::fs::read(&file_path).unwrap();
-        
+
         // Encrypted data should not match plaintext
         assert_ne!(raw_contents.as_slice(), test_data);
         // Should be longer due to age encryption overhead
@@ -787,12 +792,12 @@ mod tests {
     #[serial]
     async fn test_encrypted_storage_key_persistence() {
         use std::env;
-        
+
         // Generate a consistent test key for this test
         let identity = age::x25519::Identity::generate();
         let identity_str = identity.to_string();
-        use secrecy::ExposeSecret;
         use base64::Engine;
+        use secrecy::ExposeSecret;
         let key_base64 = base64::engine::general_purpose::STANDARD
             .encode(identity_str.expose_secret().as_bytes());
 
@@ -800,14 +805,17 @@ mod tests {
         env::set_var("RUNBEAM_ENCRYPTION_KEY", &key_base64);
 
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create first storage instance
         let storage1 = EncryptedFilesystemStorage::new(temp_dir.path())
             .await
             .unwrap();
 
         let test_data = b"persistent test";
-        storage1.write_file_str("data.txt", test_data).await.unwrap();
+        storage1
+            .write_file_str("data.txt", test_data)
+            .await
+            .unwrap();
 
         // Drop first instance
         drop(storage1);
@@ -828,9 +836,9 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_encrypted_storage_env_var_key() {
-        use std::env;
         use base64::Engine;
-        
+        use std::env;
+
         // Generate a test key
         let identity = age::x25519::Identity::generate();
         let identity_str = identity.to_string();
@@ -849,7 +857,7 @@ mod tests {
         let test_data = b"env var test";
         storage.write_file_str("test.bin", test_data).await.unwrap();
         let read_data = storage.read_file_str("test.bin").await.unwrap();
-        
+
         assert_eq!(read_data, test_data);
 
         // Cleanup
@@ -861,24 +869,24 @@ mod tests {
     #[cfg(unix)]
     async fn test_encrypted_storage_key_file_permissions() {
         use std::os::unix::fs::PermissionsExt;
-        
+
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Clear environment variable to force key file generation
         std::env::remove_var("RUNBEAM_ENCRYPTION_KEY");
-        
+
         let _storage = EncryptedFilesystemStorage::new(temp_dir.path())
             .await
             .unwrap();
 
         // Check that key file was created with 0600 permissions
         let key_path = dirs::home_dir().unwrap().join(".runbeam/encryption.key");
-        
+
         if key_path.exists() {
             let metadata = std::fs::metadata(&key_path).unwrap();
             let permissions = metadata.permissions();
             let mode = permissions.mode();
-            
+
             // On Unix, mode & 0o777 should be 0o600
             assert_eq!(mode & 0o777, 0o600, "Key file should have 0600 permissions");
         }

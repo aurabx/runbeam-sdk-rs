@@ -47,7 +47,10 @@ fn test_change_resource_full_lifecycle() {
         deserialized.payload["name"].as_str().unwrap(),
         "api-endpoint"
     );
-    assert_eq!(deserialized.payload["path"].as_str().unwrap(), "/api/v1/users");
+    assert_eq!(
+        deserialized.payload["path"].as_str().unwrap(),
+        "/api/v1/users"
+    );
 }
 
 #[test]
@@ -161,8 +164,7 @@ fn test_paginated_changes_response() {
         }
     });
 
-    let response: PaginatedResponse<Change> =
-        serde_json::from_value(response_json).unwrap();
+    let response: PaginatedResponse<Change> = serde_json::from_value(response_json).unwrap();
 
     assert_eq!(response.data.len(), 2);
     assert_eq!(response.data[0].id, "change-001");

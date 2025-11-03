@@ -5,10 +5,9 @@
 //! optional fields, and API v1.2 schema compliance.
 
 use runbeam_sdk::{
-    Authentication, Backend, BaseUrlResponse, Change, ChangeFailedRequest, Endpoint,
-    Gateway, GatewayConfiguration, Middleware, Network, PaginatedResponse,
-    Pipeline, Policy, ResourceResponse, Service, Transform,
-    AcknowledgeChangesRequest,
+    AcknowledgeChangesRequest, Authentication, Backend, BaseUrlResponse, Change,
+    ChangeFailedRequest, Endpoint, Gateway, GatewayConfiguration, Middleware, Network,
+    PaginatedResponse, Pipeline, Policy, ResourceResponse, Service, Transform,
 };
 use serde_json::json;
 
@@ -38,16 +37,22 @@ fn test_gateway_serialization_full() {
     });
 
     let gateway: Gateway = serde_json::from_value(gateway_json).unwrap();
-    
+
     assert_eq!(gateway.resource_type, "gateway");
     assert_eq!(gateway.id, Some("gateway-123".to_string()));
     assert_eq!(gateway.code, "my-gateway");
     assert_eq!(gateway.name, "My Gateway");
     assert_eq!(gateway.team_id, "team-456");
     assert_eq!(gateway.enabled, Some(true));
-    assert_eq!(gateway.pipelines_path, Some("/etc/harmony/pipelines".to_string()));
+    assert_eq!(
+        gateway.pipelines_path,
+        Some("/etc/harmony/pipelines".to_string())
+    );
     assert_eq!(gateway.jwks_cache_duration_hours, Some(24));
-    assert_eq!(gateway.dns, Some(vec!["8.8.8.8".to_string(), "1.1.1.1".to_string()]));
+    assert_eq!(
+        gateway.dns,
+        Some(vec!["8.8.8.8".to_string(), "1.1.1.1".to_string()])
+    );
 }
 
 #[test]
@@ -60,7 +65,7 @@ fn test_gateway_serialization_minimal() {
     });
 
     let gateway: Gateway = serde_json::from_value(gateway_json).unwrap();
-    
+
     assert_eq!(gateway.code, "minimal-gateway");
     assert_eq!(gateway.name, "Minimal Gateway");
     assert!(gateway.id.is_none());
@@ -91,7 +96,7 @@ fn test_gateway_roundtrip() {
 
     let json = serde_json::to_value(&gateway).unwrap();
     let deserialized: Gateway = serde_json::from_value(json).unwrap();
-    
+
     assert_eq!(deserialized.code, gateway.code);
     assert_eq!(deserialized.id, gateway.id);
 }
@@ -115,7 +120,7 @@ fn test_service_serialization() {
     });
 
     let service: Service = serde_json::from_value(service_json).unwrap();
-    
+
     assert_eq!(service.resource_type, "service");
     assert_eq!(service.code, "api-service");
     assert_eq!(service.description, Some("Main API service".to_string()));
@@ -132,7 +137,7 @@ fn test_service_without_description() {
     });
 
     let service: Service = serde_json::from_value(service_json).unwrap();
-    
+
     assert!(service.description.is_none());
     assert!(service.id.is_none());
 }
@@ -159,10 +164,16 @@ fn test_endpoint_with_methods() {
     });
 
     let endpoint: Endpoint = serde_json::from_value(endpoint_json).unwrap();
-    
+
     assert_eq!(endpoint.path, Some("/api/users".to_string()));
-    assert_eq!(endpoint.methods, Some(vec!["GET".to_string(), "POST".to_string()]));
-    assert_eq!(endpoint.description, Some("User management endpoint".to_string()));
+    assert_eq!(
+        endpoint.methods,
+        Some(vec!["GET".to_string(), "POST".to_string()])
+    );
+    assert_eq!(
+        endpoint.description,
+        Some("User management endpoint".to_string())
+    );
 }
 
 #[test]
@@ -175,7 +186,7 @@ fn test_endpoint_minimal() {
     });
 
     let endpoint: Endpoint = serde_json::from_value(endpoint_json).unwrap();
-    
+
     assert!(endpoint.path.is_none());
     assert!(endpoint.methods.is_none());
     assert!(endpoint.gateway_id.is_none());
@@ -202,7 +213,7 @@ fn test_backend_with_timeout() {
     });
 
     let backend: Backend = serde_json::from_value(backend_json).unwrap();
-    
+
     assert_eq!(backend.url, Some("https://api.example.com".to_string()));
     assert_eq!(backend.timeout_seconds, Some(30));
 }
@@ -230,7 +241,7 @@ fn test_pipeline_with_complex_data() {
     });
 
     let pipeline: Pipeline = serde_json::from_value(pipeline_json).unwrap();
-    
+
     assert_eq!(pipeline.code, "main-pipeline");
     assert_eq!(pipeline.description, "Primary request pipeline");
     assert!(pipeline.networks.is_some());
@@ -258,10 +269,10 @@ fn test_middleware_with_options() {
     });
 
     let middleware: Middleware = serde_json::from_value(middleware_json).unwrap();
-    
+
     assert_eq!(middleware.middleware_type, "jwt");
     assert!(middleware.options.is_some());
-    
+
     let options = middleware.options.unwrap();
     assert_eq!(options["issuer"], "https://auth.example.com");
 }
@@ -287,7 +298,7 @@ fn test_transform_with_instructions() {
     });
 
     let transform: Transform = serde_json::from_value(transform_json).unwrap();
-    
+
     assert_eq!(transform.code, "user-transform");
     assert!(transform.options.is_some());
 }
@@ -312,10 +323,10 @@ fn test_policy_with_rules() {
     });
 
     let policy: Policy = serde_json::from_value(policy_json).unwrap();
-    
+
     assert_eq!(policy.enabled, 1);
     assert!(policy.rules.is_some());
-    
+
     let rules = policy.rules.unwrap();
     assert_eq!(rules["max_requests"], 100);
 }
@@ -344,11 +355,11 @@ fn test_network_with_http_config() {
     });
 
     let network: Network = serde_json::from_value(network_json).unwrap();
-    
+
     assert_eq!(network.enable_wireguard, true);
     assert_eq!(network.interface, Some("wg0".to_string()));
     assert!(network.http.is_some());
-    
+
     let http = network.http.unwrap();
     assert_eq!(http.bind_address, Some("0.0.0.0".to_string()));
     assert_eq!(http.bind_port, Some(8080));
@@ -373,7 +384,7 @@ fn test_authentication_resource() {
     });
 
     let auth: Authentication = serde_json::from_value(auth_json).unwrap();
-    
+
     assert_eq!(auth.name, "JWT Authentication");
     assert!(auth.options.is_some());
 }
@@ -407,11 +418,14 @@ fn test_paginated_response() {
     });
 
     let response: PaginatedResponse<Gateway> = serde_json::from_value(response_json).unwrap();
-    
+
     assert_eq!(response.data.len(), 2);
     assert_eq!(response.meta.total, 250);
     assert_eq!(response.meta.current_page, 1);
-    assert_eq!(response.links.next, Some("https://api.example.com?page=2".to_string()));
+    assert_eq!(
+        response.links.next,
+        Some("https://api.example.com?page=2".to_string())
+    );
 }
 
 #[test]
@@ -436,7 +450,7 @@ fn test_paginated_response_empty() {
     });
 
     let response: PaginatedResponse<Gateway> = serde_json::from_value(response_json).unwrap();
-    
+
     assert_eq!(response.data.len(), 0);
     assert_eq!(response.meta.total, 0);
     assert!(response.meta.from.is_none());
@@ -456,7 +470,7 @@ fn test_resource_response() {
     });
 
     let response: ResourceResponse<Service> = serde_json::from_value(response_json).unwrap();
-    
+
     assert_eq!(response.data.code, "test-service");
     assert_eq!(response.data.name, "Test Service");
 }
@@ -485,7 +499,7 @@ fn test_change_with_all_fields() {
     });
 
     let change: Change = serde_json::from_value(change_json).unwrap();
-    
+
     assert_eq!(change.id, "change-123");
     assert_eq!(change.status, "pending");
     assert_eq!(change.operation, "create");
@@ -510,16 +524,26 @@ fn test_change_with_error() {
     });
 
     let change: Change = serde_json::from_value(change_json).unwrap();
-    
+
     assert_eq!(change.status, "failed");
-    assert_eq!(change.error, Some("Connection timeout after 30 seconds".to_string()));
+    assert_eq!(
+        change.error,
+        Some("Connection timeout after 30 seconds".to_string())
+    );
 }
 
 #[test]
 fn test_change_all_resource_types() {
     let resource_types = vec![
-        "endpoint", "backend", "service", "pipeline", 
-        "middleware", "transform", "policy", "network", "gateway"
+        "endpoint",
+        "backend",
+        "service",
+        "pipeline",
+        "middleware",
+        "transform",
+        "policy",
+        "network",
+        "gateway",
     ];
 
     for resource_type in resource_types {
@@ -570,7 +594,7 @@ fn test_gateway_configuration_full() {
     });
 
     let config: GatewayConfiguration = serde_json::from_value(config_json).unwrap();
-    
+
     assert_eq!(config.gateway.code, "main-gw");
     assert_eq!(config.services.len(), 1);
     assert_eq!(config.endpoints.len(), 1);

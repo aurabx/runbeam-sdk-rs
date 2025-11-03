@@ -38,7 +38,9 @@ async fn get_storage_backend(
         match test_result {
             Ok(_) => {
                 // Keyring operations succeeded
-                tracing::debug!("Keyring storage is available, using OS keychain for secure token storage");
+                tracing::debug!(
+                    "Keyring storage is available, using OS keychain for secure token storage"
+                );
                 true
             }
             Err(e) => {
@@ -259,10 +261,7 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub async fn load_token<T>(
-    instance_id: &str,
-    token_type: &str,
-) -> Result<Option<T>, StorageError>
+pub async fn load_token<T>(instance_id: &str, token_type: &str) -> Result<Option<T>, StorageError>
 where
     T: DeserializeOwned,
 {
@@ -430,11 +429,9 @@ pub async fn save_token_with_key(
         Some(b) => b,
         None => {
             // Use encrypted filesystem with the provided key
-            let encrypted = EncryptedFilesystemStorage::new_with_instance_and_key(
-                instance_id,
-                encryption_key,
-            )
-            .await?;
+            let encrypted =
+                EncryptedFilesystemStorage::new_with_instance_and_key(instance_id, encryption_key)
+                    .await?;
             StorageBackendType::Encrypted(encrypted)
         }
     };
@@ -448,9 +445,7 @@ pub async fn save_token_with_key(
     // Write to storage
     match backend {
         StorageBackendType::Keyring(storage) => storage.write_file_str(token_path, &json).await?,
-        StorageBackendType::Encrypted(storage) => {
-            storage.write_file_str(token_path, &json).await?
-        }
+        StorageBackendType::Encrypted(storage) => storage.write_file_str(token_path, &json).await?,
     }
 
     tracing::info!(
@@ -513,9 +508,7 @@ pub async fn save_machine_token(
 ///
 /// Returns `Ok(Some(token))` if a token was found and loaded successfully,
 /// `Ok(None)` if no token file exists, or `Err(StorageError)` if loading failed.
-pub async fn load_machine_token(
-    instance_id: &str,
-) -> Result<Option<MachineToken>, StorageError> {
+pub async fn load_machine_token(instance_id: &str) -> Result<Option<MachineToken>, StorageError> {
     load_token(instance_id, "auth").await
 }
 
@@ -548,19 +541,19 @@ mod tests {
 
     /// Setup test encryption key and return cleanup function
     fn setup_test_encryption() -> impl Drop {
-        use std::env;
         use base64::Engine;
         use secrecy::ExposeSecret;
-        
+        use std::env;
+
         let identity = age::x25519::Identity::generate();
         let key_base64 = base64::engine::general_purpose::STANDARD
             .encode(identity.to_string().expose_secret().as_bytes());
         env::set_var("RUNBEAM_ENCRYPTION_KEY", &key_base64);
-        
+
         // Disable keyring in tests to force encrypted filesystem storage
         // This ensures consistent test behavior across platforms
         env::set_var("RUNBEAM_DISABLE_KEYRING", "1");
-        
+
         // Return a guard that will clean up on drop
         struct Guard;
         impl Drop for Guard {
@@ -735,7 +728,9 @@ mod tests {
             vec![],
         );
 
-        save_machine_token(instance_id, &expired_token).await.unwrap();
+        save_machine_token(instance_id, &expired_token)
+            .await
+            .unwrap();
 
         // Load and verify it's marked as expired
         let loaded = load_machine_token(instance_id).await.unwrap();
@@ -835,11 +830,16 @@ mod tests {
 
         // Use encrypted storage directly for testing
         let storage_path = temp_dir.path().join(instance_id);
-        let storage = EncryptedFilesystemStorage::new(&storage_path).await.unwrap();
+        let storage = EncryptedFilesystemStorage::new(&storage_path)
+            .await
+            .unwrap();
 
         // Save token
         let token_json = serde_json::to_vec(&token).unwrap();
-        storage.write_file_str("auth.json", &token_json).await.unwrap();
+        storage
+            .write_file_str("auth.json", &token_json)
+            .await
+            .unwrap();
 
         // Find the stored token file
         let token_path = storage_path.join("auth.json");
@@ -913,19 +913,23 @@ mod tests {
         );
 
         // Use encrypted storage directly
-        let storage = EncryptedFilesystemStorage::new(&storage_path).await.unwrap();
+        let storage = EncryptedFilesystemStorage::new(&storage_path)
+            .await
+            .unwrap();
         let token_json = serde_json::to_vec(&token).unwrap();
-        storage.write_file_str("auth.json", &token_json).await.unwrap();
+        storage
+            .write_file_str("auth.json", &token_json)
+            .await
+            .unwrap();
 
         // Try to read the file as JSON
         let token_path = storage_path.join("auth.json");
-        
+
         // Read as bytes first (encrypted data may not be valid UTF-8)
         let raw_contents = std::fs::read(&token_path).unwrap();
-        
+
         // Try to parse as JSON - should fail because it's encrypted
-        let json_parse_result: Result<serde_json::Value, _> =
-            serde_json::from_slice(&raw_contents);
+        let json_parse_result: Result<serde_json::Value, _> = serde_json::from_slice(&raw_contents);
         assert!(
             json_parse_result.is_err(),
             "Raw token file should NOT be parseable as JSON (it should be encrypted)"
@@ -953,8 +957,13 @@ mod tests {
         let plaintext_json = serde_json::to_vec(&token).unwrap();
 
         // Use encrypted storage directly
-        let storage = EncryptedFilesystemStorage::new(&storage_path).await.unwrap();
-        storage.write_file_str("auth.json", &plaintext_json).await.unwrap();
+        let storage = EncryptedFilesystemStorage::new(&storage_path)
+            .await
+            .unwrap();
+        storage
+            .write_file_str("auth.json", &plaintext_json)
+            .await
+            .unwrap();
 
         // Read encrypted file
         let token_path = storage_path.join("auth.json");
@@ -1003,14 +1012,24 @@ mod tests {
         let storage1_path = temp_dir.path().join("instance-1");
         let storage2_path = temp_dir.path().join("instance-2");
 
-        let storage1 = EncryptedFilesystemStorage::new(&storage1_path).await.unwrap();
-        let storage2 = EncryptedFilesystemStorage::new(&storage2_path).await.unwrap();
+        let storage1 = EncryptedFilesystemStorage::new(&storage1_path)
+            .await
+            .unwrap();
+        let storage2 = EncryptedFilesystemStorage::new(&storage2_path)
+            .await
+            .unwrap();
 
         // Save tokens
         let token1_json = serde_json::to_vec(&token1).unwrap();
         let token2_json = serde_json::to_vec(&token2).unwrap();
-        storage1.write_file_str("auth.json", &token1_json).await.unwrap();
-        storage2.write_file_str("auth.json", &token2_json).await.unwrap();
+        storage1
+            .write_file_str("auth.json", &token1_json)
+            .await
+            .unwrap();
+        storage2
+            .write_file_str("auth.json", &token2_json)
+            .await
+            .unwrap();
 
         // Verify files are in separate directories
         let path1 = storage1_path.join("auth.json");
@@ -1058,7 +1077,9 @@ mod tests {
         let storage_path = temp_dir.path().join(instance_id);
 
         // Create storage which will generate encryption key
-        let _storage = EncryptedFilesystemStorage::new(&storage_path).await.unwrap();
+        let _storage = EncryptedFilesystemStorage::new(&storage_path)
+            .await
+            .unwrap();
 
         // Check encryption key file permissions
         let key_path = storage_path.join("encryption.key");
@@ -1100,14 +1121,19 @@ mod tests {
         );
 
         // Use encrypted storage directly
-        let storage = EncryptedFilesystemStorage::new(&storage_path).await.unwrap();
+        let storage = EncryptedFilesystemStorage::new(&storage_path)
+            .await
+            .unwrap();
         let token_json = serde_json::to_vec(&token).unwrap();
-        storage.write_file_str("auth.json", &token_json).await.unwrap();
+        storage
+            .write_file_str("auth.json", &token_json)
+            .await
+            .unwrap();
 
         // Tamper with the encrypted file
         let token_path = storage_path.join("auth.json");
         let mut contents = std::fs::read(&token_path).unwrap();
-        
+
         // Flip some bytes in the middle of the file
         if contents.len() > 50 {
             contents[25] = contents[25].wrapping_add(1);

@@ -3,8 +3,8 @@
 //! Comprehensive tests for JWT token validation, JWKS caching, and bearer token extraction.
 //! These tests verify the authentication layer works correctly with RS256 signed JWTs.
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use runbeam_sdk::{extract_bearer_token, validate_jwt_token, JwtClaims};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::json;
 use wiremock::{
     matchers::{method, path},
@@ -202,7 +202,7 @@ fn create_test_jwks() -> (String, String) {
 #[tokio::test]
 async fn test_jwt_validation_with_malformed_token() {
     let mock_server = MockServer::start().await;
-    
+
     // Mock JWKS endpoint
     let (jwks_response, _) = create_test_jwks();
     Mock::given(method("GET"))
@@ -213,7 +213,7 @@ async fn test_jwt_validation_with_malformed_token() {
 
     // Malformed JWT (not three parts)
     let malformed_token = "not.a.valid.jwt.token";
-    
+
     let result = validate_jwt_token(malformed_token, 24).await;
     assert!(result.is_err());
 }
@@ -221,12 +221,12 @@ async fn test_jwt_validation_with_malformed_token() {
 #[tokio::test]
 async fn test_jwt_validation_with_missing_kid() {
     let mock_server = MockServer::start().await;
-    
+
     // Create a simple JWT header without kid
     let header = BASE64.encode(json!({"alg": "RS256", "typ": "JWT"}).to_string());
     let payload = BASE64.encode(json!({"iss": mock_server.uri(), "sub": "test", "exp": 9999999999_i64, "iat": 1234567890_i64}).to_string());
     let invalid_jwt = format!("{}.{}.fakesignature", header, payload);
-    
+
     let result = validate_jwt_token(&invalid_jwt, 24).await;
     assert!(result.is_err());
 }
@@ -234,22 +234,26 @@ async fn test_jwt_validation_with_missing_kid() {
 #[tokio::test]
 async fn test_jwt_validation_with_expired_token() {
     let mock_server = MockServer::start().await;
-    
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    
+
     // Create JWT with expired timestamp
-    let header = BASE64.encode(json!({"alg": "RS256", "typ": "JWT", "kid": "test-key"}).to_string());
-    let payload = BASE64.encode(json!({
-        "iss": mock_server.uri(),
-        "sub": "test",
-        "exp": now - 3600,  // Expired 1 hour ago
-        "iat": now - 7200
-    }).to_string());
+    let header =
+        BASE64.encode(json!({"alg": "RS256", "typ": "JWT", "kid": "test-key"}).to_string());
+    let payload = BASE64.encode(
+        json!({
+            "iss": mock_server.uri(),
+            "sub": "test",
+            "exp": now - 3600,  // Expired 1 hour ago
+            "iat": now - 7200
+        })
+        .to_string(),
+    );
     let expired_jwt = format!("{}.{}.fakesignature", header, payload);
-    
+
     // Mock JWKS endpoint
     let (jwks_response, _) = create_test_jwks();
     Mock::given(method("GET"))
@@ -257,7 +261,7 @@ async fn test_jwt_validation_with_expired_token() {
         .respond_with(ResponseTemplate::new(200).set_body_string(jwks_response))
         .mount(&mock_server)
         .await;
-    
+
     let result = validate_jwt_token(&expired_jwt, 24).await;
     // Should fail due to expiration
     assert!(result.is_err());
@@ -266,22 +270,26 @@ async fn test_jwt_validation_with_expired_token() {
 #[tokio::test]
 async fn test_jwt_validation_missing_required_claims() {
     let mock_server = MockServer::start().await;
-    
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    
+
     // Create JWT without required 'sub' claim
-    let header = BASE64.encode(json!({"alg": "RS256", "typ": "JWT", "kid": "test-key"}).to_string());
-    let payload = BASE64.encode(json!({
-        "iss": mock_server.uri(),
-        // Missing 'sub' claim
-        "exp": now + 3600,
-        "iat": now
-    }).to_string());
+    let header =
+        BASE64.encode(json!({"alg": "RS256", "typ": "JWT", "kid": "test-key"}).to_string());
+    let payload = BASE64.encode(
+        json!({
+            "iss": mock_server.uri(),
+            // Missing 'sub' claim
+            "exp": now + 3600,
+            "iat": now
+        })
+        .to_string(),
+    );
     let invalid_jwt = format!("{}.{}.fakesignature", header, payload);
-    
+
     // Mock JWKS endpoint
     let (jwks_response, _) = create_test_jwks();
     Mock::given(method("GET"))
@@ -289,7 +297,7 @@ async fn test_jwt_validation_missing_required_claims() {
         .respond_with(ResponseTemplate::new(200).set_body_string(jwks_response))
         .mount(&mock_server)
         .await;
-    
+
     let result = validate_jwt_token(&invalid_jwt, 24).await;
     // Should fail validation due to missing subject
     assert!(result.is_err());
@@ -303,8 +311,6 @@ async fn test_jwt_validation_missing_required_claims() {
 // The SDK needs properly signed RS256 JWTs which is complex to set up in tests.
 // The unit tests above cover the basic functionality, and the SDK is tested
 // end-to-end with real tokens in production.
-
-
 
 // ============================================================================
 // JWKS Caching Tests
@@ -321,7 +327,7 @@ async fn test_jwt_validation_missing_required_claims() {
 #[test]
 fn test_jwt_claims_serialization() {
     use runbeam_sdk::{TeamInfo, UserInfo};
-    
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -379,7 +385,7 @@ fn test_jwt_claims_serialization_minimal() {
 
     // Serialize to JSON
     let json = serde_json::to_string(&claims).unwrap();
-    
+
     // Deserialize back
     let deserialized: JwtClaims = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.iss, "http://example.com");
