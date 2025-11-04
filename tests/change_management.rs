@@ -147,8 +147,8 @@ fn test_paginated_changes_response() {
     let response_json = json!({
         "data": changes,
         "links": {
-            "first": "https://api.runbeam.io/gateway/changes?page=1",
-            "last": "https://api.runbeam.io/gateway/changes?page=1",
+            "first": "https://api.runbeam.io/api/changes?page=1",
+            "last": "https://api.runbeam.io/api/changes?page=1",
             "prev": null,
             "next": null
         },
@@ -157,7 +157,7 @@ fn test_paginated_changes_response() {
             "from": 1,
             "last_page": 1,
             "links": [],
-            "path": "https://api.runbeam.io/gateway/changes",
+            "path": "https://api.runbeam.io/api/changes",
             "per_page": 50,
             "to": 2,
             "total": 2

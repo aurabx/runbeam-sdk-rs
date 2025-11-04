@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **⚠️ BREAKING CHANGE: Change Management API Endpoints**
+  - Updated all Change Management API endpoints from `/gateway/*` to `/api/changes/*`
+  - Affected endpoints:
+    - `/gateway/base-url` → `/api/changes/base-url`
+    - `/gateway/changes` → `/api/changes`
+    - `/gateway/changes/{id}` → `/api/changes/{id}`
+    - `/gateway/changes/acknowledge` → `/api/changes/acknowledge`
+    - `/gateway/changes/{id}/applied` → `/api/changes/{id}/applied`
+    - `/gateway/changes/{id}/failed` → `/api/changes/{id}/failed`
+  - **Migration required**: Applications using Change Management API must update to use new endpoints
+  - Requires Runbeam API v1.2 or later
+  - No backwards compatibility - old endpoints are no longer supported
+
 ## [0.4.0] - 2025-11-03
 
 ### Added

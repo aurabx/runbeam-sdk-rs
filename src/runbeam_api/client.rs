@@ -763,7 +763,7 @@ impl RunbeamClient {
         &self,
         token: impl Into<String>,
     ) -> Result<crate::runbeam_api::resources::BaseUrlResponse, RunbeamError> {
-        let url = format!("{}/gateway/base-url", self.base_url);
+        let url = format!("{}/api/changes/base-url", self.base_url);
 
         tracing::debug!("Getting base URL from: {}", url);
 
@@ -826,7 +826,7 @@ impl RunbeamClient {
         crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Change>,
         RunbeamError,
     > {
-        let url = format!("{}/gateway/changes", self.base_url);
+        let url = format!("{}/api/changes", self.base_url);
 
         tracing::debug!("Listing changes from: {}", url);
 
@@ -891,7 +891,7 @@ impl RunbeamClient {
         RunbeamError,
     > {
         let change_id = change_id.into();
-        let url = format!("{}/gateway/changes/{}", self.base_url, change_id);
+        let url = format!("{}/api/changes/{}", self.base_url, change_id);
 
         tracing::debug!("Getting change {} from: {}", change_id, url);
 
@@ -954,7 +954,7 @@ impl RunbeamClient {
         token: impl Into<String>,
         change_ids: Vec<String>,
     ) -> Result<serde_json::Value, RunbeamError> {
-        let url = format!("{}/gateway/changes/acknowledge", self.base_url);
+        let url = format!("{}/api/changes/acknowledge", self.base_url);
 
         tracing::info!("Acknowledging {} changes", change_ids.len());
         tracing::debug!("Change IDs: {:?}", change_ids);
@@ -1025,7 +1025,7 @@ impl RunbeamClient {
         change_id: impl Into<String>,
     ) -> Result<serde_json::Value, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/gateway/changes/{}/applied", self.base_url, change_id);
+        let url = format!("{}/api/changes/{}/applied", self.base_url, change_id);
 
         tracing::info!("Marking change {} as applied", change_id);
 
@@ -1100,7 +1100,7 @@ impl RunbeamClient {
         details: Option<Vec<String>>,
     ) -> Result<serde_json::Value, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/gateway/changes/{}/failed", self.base_url, change_id);
+        let url = format!("{}/api/changes/{}/failed", self.base_url, change_id);
 
         tracing::warn!("Marking change {} as failed: {}", change_id, error);
         if let Some(ref details) = details {

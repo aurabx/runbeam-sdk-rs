@@ -52,12 +52,12 @@ All API methods accept both JWT and Sanctum tokens interchangeably.
 
 The Change Management API (introduced in API v1.2) enables Harmony Proxy gateways to poll for and apply configuration updates:
 
-1. Gateway polls `/gateway/base-url` to discover the changes API base URL
-2. Gateway polls `/gateway/changes` to retrieve queued configuration changes (typically every 30 seconds)
-3. Gateway acknowledges receipt via `/gateway/changes/acknowledge` (bulk operation)
+1. Gateway polls `/api/changes/base-url` to discover the changes API base URL
+2. Gateway polls `/api/changes` to retrieve queued configuration changes (typically every 30 seconds)
+3. Gateway acknowledges receipt via `/api/changes/acknowledge` (bulk operation)
 4. Gateway attempts to apply each change to its configuration
-5. Gateway reports success via `/gateway/changes/{id}/applied` OR
-6. Gateway reports failure via `/gateway/changes/{id}/failed` with error details
+5. Gateway reports success via `/api/changes/{id}/applied` OR
+6. Gateway reports failure via `/api/changes/{id}/failed` with error details
 
 **Change States:**
 - `pending` - Change is queued and awaiting acknowledgment

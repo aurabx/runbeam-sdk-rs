@@ -214,7 +214,7 @@ async fn test_get_base_url_success() {
     });
 
     Mock::given(method("GET"))
-        .and(path("/gateway/base-url"))
+        .and(path("/api/changes/base-url"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
@@ -264,8 +264,8 @@ async fn test_list_changes_success_with_pending_changes() {
             }
         ],
         "links": {
-            "first": "https://api.runbeam.io/gateway/changes?page=1",
-            "last": "https://api.runbeam.io/gateway/changes?page=1",
+            "first": "https://api.runbeam.io/api/changes?page=1",
+            "last": "https://api.runbeam.io/api/changes?page=1",
             "prev": null,
             "next": null
         },
@@ -273,7 +273,7 @@ async fn test_list_changes_success_with_pending_changes() {
             "current_page": 1,
             "from": 1,
             "last_page": 1,
-            "path": "https://api.runbeam.io/gateway/changes",
+            "path": "https://api.runbeam.io/api/changes",
             "per_page": 50,
             "to": 2,
             "total": 2
@@ -281,7 +281,7 @@ async fn test_list_changes_success_with_pending_changes() {
     });
 
     Mock::given(method("GET"))
-        .and(path("/gateway/changes"))
+        .and(path("/api/changes"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
@@ -317,7 +317,7 @@ async fn test_list_changes_empty_results() {
             "current_page": 1,
             "from": null,
             "last_page": 1,
-            "path": "https://api.runbeam.io/gateway/changes",
+            "path": "https://api.runbeam.io/api/changes",
             "per_page": 50,
             "to": null,
             "total": 0
@@ -325,7 +325,7 @@ async fn test_list_changes_empty_results() {
     });
 
     Mock::given(method("GET"))
-        .and(path("/gateway/changes"))
+        .and(path("/api/changes"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
         .mount(&mock_server)
@@ -354,7 +354,7 @@ async fn test_acknowledge_changes_success() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/gateway/changes/acknowledge"))
+        .and(path("/api/changes/acknowledge"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .and(header("Content-Type", "application/json"))
         .and(body_json(&expected_request))
@@ -387,7 +387,7 @@ async fn test_mark_change_applied_success() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/gateway/changes/change-123/applied"))
+        .and(path("/api/changes/change-123/applied"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
@@ -417,7 +417,7 @@ async fn test_mark_change_failed_with_details() {
     });
 
     Mock::given(method("POST"))
-        .and(path("/gateway/changes/change-456/failed"))
+        .and(path("/api/changes/change-456/failed"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .and(header("Content-Type", "application/json"))
         .and(body_json(&expected_request))
@@ -870,7 +870,7 @@ async fn test_get_change_by_id() {
     });
 
     Mock::given(method("GET"))
-        .and(path("/gateway/changes/change-999"))
+        .and(path("/api/changes/change-999"))
         .and(header("Authorization", "Bearer machine_token_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
         .expect(1)
