@@ -898,13 +898,19 @@ async fn test_list_config_changes_success() {
     let response_body = json!([
         {
             "id": "config-change-001",
-            "timestamp": "2024-10-31T00:00:00Z",
-            "summary": "Updated endpoint configuration"
+            "status": "queued",
+            "type": "gateway",
+            "gateway_id": "gateway-123",
+            "pipeline_id": null,
+            "created_at": "2024-10-31T00:00:00Z"
         },
         {
             "id": "config-change-002",
-            "timestamp": "2024-10-31T00:01:00Z",
-            "summary": "Added new backend"
+            "status": "acknowledged",
+            "type": "pipeline",
+            "gateway_id": "gateway-123",
+            "pipeline_id": "pipeline-001",
+            "created_at": "2024-10-31T00:01:00Z"
         }
     ]);
 
@@ -923,7 +929,8 @@ async fn test_list_config_changes_success() {
     let changes = result.unwrap();
     assert_eq!(changes.len(), 2);
     assert_eq!(changes[0].id, "config-change-001");
-    assert_eq!(changes[1].summary, "Added new backend");
+    assert_eq!(changes[0].status, "queued");
+    assert_eq!(changes[1].change_type, "pipeline");
 }
 
 #[tokio::test]
@@ -954,11 +961,21 @@ async fn test_get_config_change_by_id() {
 
     let response_body = json!({
         "id": "config-change-123",
-        "content": "{\"endpoint\": {\"path\": \"/api/v2/users\"}}",
+        "status": "queued",
+        "type": "gateway",
+        "gateway_id": "gateway-123",
+        "pipeline_id": null,
+        "toml_config": "[proxy]\nid = \"test\"\n",
         "metadata": {
             "version": "1.0",
             "author": "admin"
-        }
+        },
+        "created_at": "2024-10-31T00:00:00Z",
+        "acknowledged_at": null,
+        "applied_at": null,
+        "failed_at": null,
+        "error_message": null,
+        "error_details": null
     });
 
     Mock::given(method("GET"))
@@ -977,7 +994,8 @@ async fn test_get_config_change_by_id() {
     assert!(result.is_ok());
     let change = result.unwrap();
     assert_eq!(change.id, "config-change-123");
-    assert!(change.content.contains("endpoint"));
+    assert_eq!(change.status, "queued");
+    assert!(change.toml_config.contains("proxy"));
     assert!(change.metadata.is_some());
 }
 

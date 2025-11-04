@@ -169,17 +169,39 @@ pub struct AuthorizeResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigChange {
     pub id: String,
-    pub timestamp: String,
-    pub summary: String,
+    pub status: String,
+    #[serde(rename = "type")]
+    pub change_type: String,
+    pub gateway_id: String,
+    #[serde(default)]
+    pub pipeline_id: Option<String>,
+    pub created_at: String,
 }
 
 /// Detailed config change with full content
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigChangeDetail {
     pub id: String,
-    pub content: String,
+    pub status: String,
+    #[serde(rename = "type")]
+    pub change_type: String,
+    pub gateway_id: String,
+    #[serde(default)]
+    pub pipeline_id: Option<String>,
+    pub toml_config: String,
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
+    pub created_at: String,
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    #[serde(default)]
+    pub applied_at: Option<String>,
+    #[serde(default)]
+    pub failed_at: Option<String>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub error_details: Option<serde_json::Value>,
 }
 
 /// Response after acknowledging/reporting config change
@@ -188,4 +210,125 @@ pub struct ConfigChangeAck {
     pub success: bool,
     #[serde(default)]
     pub message: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_change_deserialization() {
+        let json = r#"{
+            "id": "01k8vdq9wrcrezzbdpbjwsfwnz",
+            "status": "queued",
+            "type": "gateway",
+            "gateway_id": "01k8ek6h9aahhnrv3benret1nn",
+            "pipeline_id": null,
+            "created_at": "2025-10-30T20:42:36.000000Z"
+        }"#;
+
+        let change: ConfigChange = serde_json::from_str(json).unwrap();
+        assert_eq!(change.id, "01k8vdq9wrcrezzbdpbjwsfwnz");
+        assert_eq!(change.status, "queued");
+        assert_eq!(change.change_type, "gateway");
+        assert_eq!(change.gateway_id, "01k8ek6h9aahhnrv3benret1nn");
+        assert_eq!(change.pipeline_id, None);
+        assert_eq!(change.created_at, "2025-10-30T20:42:36.000000Z");
+    }
+
+    #[test]
+    fn test_config_change_with_pipeline_deserialization() {
+        let json = r#"{
+            "id": "01k8xyz123456789",
+            "status": "applied",
+            "type": "pipeline",
+            "gateway_id": "01k8ek6h9aahhnrv3benret1nn",
+            "pipeline_id": "01k8pipeline123",
+            "created_at": "2025-10-30T21:00:00.000000Z"
+        }"#;
+
+        let change: ConfigChange = serde_json::from_str(json).unwrap();
+        assert_eq!(change.change_type, "pipeline");
+        assert_eq!(change.pipeline_id, Some("01k8pipeline123".to_string()));
+    }
+
+    #[test]
+    fn test_config_change_detail_deserialization() {
+        let json = r#"{
+            "id": "01k8vdq9wrcrezzbdpbjwsfwnz",
+            "status": "queued",
+            "type": "gateway",
+            "gateway_id": "01k8ek6h9aahhnrv3benret1nn",
+            "pipeline_id": null,
+            "toml_config": "[proxy]\nid = \"test\"\n",
+            "metadata": {"gateway_name": "test-gateway"},
+            "created_at": "2025-10-30T20:42:36.000000Z",
+            "acknowledged_at": null,
+            "applied_at": null,
+            "failed_at": null,
+            "error_message": null,
+            "error_details": null
+        }"#;
+
+        let detail: ConfigChangeDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(detail.id, "01k8vdq9wrcrezzbdpbjwsfwnz");
+        assert_eq!(detail.status, "queued");
+        assert_eq!(detail.change_type, "gateway");
+        assert_eq!(detail.toml_config, "[proxy]\nid = \"test\"\n");
+        assert!(detail.metadata.is_some());
+        assert!(detail.acknowledged_at.is_none());
+        assert!(detail.applied_at.is_none());
+        assert!(detail.failed_at.is_none());
+    }
+
+    #[test]
+    fn test_config_change_detail_with_timestamps() {
+        let json = r#"{
+            "id": "01k8vdq9wrcrezzbdpbjwsfwnz",
+            "status": "applied",
+            "type": "gateway",
+            "gateway_id": "01k8ek6h9aahhnrv3benret1nn",
+            "pipeline_id": null,
+            "toml_config": "[proxy]\nid = \"test\"\n",
+            "metadata": null,
+            "created_at": "2025-10-30T20:42:36.000000Z",
+            "acknowledged_at": "2025-10-30T20:42:40.000000Z",
+            "applied_at": "2025-10-30T20:42:45.000000Z",
+            "failed_at": null,
+            "error_message": null,
+            "error_details": null
+        }"#;
+
+        let detail: ConfigChangeDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(detail.status, "applied");
+        assert_eq!(detail.acknowledged_at, Some("2025-10-30T20:42:40.000000Z".to_string()));
+        assert_eq!(detail.applied_at, Some("2025-10-30T20:42:45.000000Z".to_string()));
+        assert!(detail.failed_at.is_none());
+    }
+
+    #[test]
+    fn test_config_change_detail_with_error() {
+        let json = r#"{
+            "id": "01k8vdq9wrcrezzbdpbjwsfwnz",
+            "status": "failed",
+            "type": "gateway",
+            "gateway_id": "01k8ek6h9aahhnrv3benret1nn",
+            "pipeline_id": null,
+            "toml_config": "[proxy]\nid = \"test\"\n",
+            "metadata": null,
+            "created_at": "2025-10-30T20:42:36.000000Z",
+            "acknowledged_at": "2025-10-30T20:42:40.000000Z",
+            "applied_at": null,
+            "failed_at": "2025-10-30T20:42:45.000000Z",
+            "error_message": "Invalid TOML syntax",
+            "error_details": {"line": 5, "column": 10}
+        }"#;
+
+        let detail: ConfigChangeDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(detail.status, "failed");
+        assert_eq!(detail.failed_at, Some("2025-10-30T20:42:45.000000Z".to_string()));
+        assert_eq!(detail.error_message, Some("Invalid TOML syntax".to_string()));
+        assert!(detail.error_details.is_some());
+        assert!(detail.applied_at.is_none());
+    }
 }

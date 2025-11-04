@@ -202,6 +202,41 @@ impl RunbeamClient {
 
     /// List pending config changes for a gateway
     ///
+    /// Returns a list of config changes in the order returned by the API.
+    /// **Important**: Changes should be processed in reverse order (oldest first)
+    /// to maintain correct configuration state progression.
+    ///
+    /// # Response Fields
+    ///
+    /// - `id`: Unique change identifier
+    /// - `status`: Current status ("queued", "acknowledged", "applied", "failed")
+    /// - `type`: Change type ("gateway" or "pipeline")
+    /// - `gateway_id`: Gateway this change applies to
+    /// - `pipeline_id`: Pipeline ID (null for gateway-level changes)
+    /// - `created_at`: ISO 8601 timestamp when change was created
+    ///
+    /// # Change Status Lifecycle
+    ///
+    /// 1. **queued** - Change created, waiting to be fetched
+    /// 2. **acknowledged** - Gateway has fetched the change details
+    /// 3. **applied** - Change successfully applied to configuration
+    /// 4. **failed** - Change application failed (see error fields)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use runbeam_sdk::RunbeamClient;
+    /// # async fn example(client: &RunbeamClient, token: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// let changes = client.list_config_changes(token).await?;
+    ///
+    /// // Process in reverse order (oldest first)
+    /// for change in changes.into_iter().rev() {
+    ///     println!("Change {}: {} ({})", change.id, change.change_type, change.status);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Arguments
     ///
     /// * `gateway_token` - Machine token for the gateway
@@ -237,6 +272,40 @@ impl RunbeamClient {
     }
 
     /// Get detailed config change content
+    ///
+    /// Returns the full configuration change including TOML content, metadata,
+    /// timestamps, and error information if applicable.
+    ///
+    /// # Response Fields
+    ///
+    /// - `id`: Unique change identifier
+    /// - `status`: Current status
+    /// - `type`: Change type ("gateway" or "pipeline")
+    /// - `gateway_id`: Gateway this change applies to
+    /// - `pipeline_id`: Pipeline ID (null for gateway-level changes)
+    /// - `toml_config`: TOML configuration content to be applied
+    /// - `metadata`: Additional metadata (e.g., gateway_name, generated_at)
+    /// - `created_at`: When the change was created
+    /// - `acknowledged_at`: When the gateway acknowledged receipt (null if not yet acknowledged)
+    /// - `applied_at`: When successfully applied (null if not yet applied)
+    /// - `failed_at`: When application failed (null if not failed)
+    /// - `error_message`: Human-readable error message (null if no error)
+    /// - `error_details`: Structured error details (null if no error)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use runbeam_sdk::RunbeamClient;
+    /// # async fn example(client: &RunbeamClient, token: &str, change_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// let detail = client.get_config_change(token, change_id).await?;
+    ///
+    /// // Write TOML config to file
+    /// std::fs::write("/etc/harmony/config.toml", &detail.toml_config)?;
+    ///
+    /// println!("Applied change: {} (status: {})", detail.id, detail.status);
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Arguments
     ///
