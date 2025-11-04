@@ -801,6 +801,80 @@ impl RunbeamClient {
         })
     }
 
+    /// Get a specific transform by ID
+    ///
+    /// Retrieve transform details including the JOLT specification stored in
+    /// the `options.instructions` field. Used by Harmony Proxy to download
+    /// transform specifications when applying cloud-sourced pipeline configurations.
+    ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - JWT, Sanctum API token, or machine token for authentication
+    /// * `transform_id` - The transform ID (ULID format)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let transform = client.get_transform("machine_token", "01k81xczrw551e1qj9rgrf0319").await?;
+    /// 
+    /// // Extract JOLT specification
+    /// if let Some(options) = &transform.data.options {
+    ///     if let Some(instructions) = &options.instructions {
+    ///         println!("JOLT spec: {}", instructions);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_transform(
+        &self,
+        token: impl Into<String>,
+        transform_id: impl Into<String>,
+    ) -> Result<
+        crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Transform>,
+        RunbeamError,
+    > {
+        let transform_id = transform_id.into();
+        let url = format!("{}/api/transforms/{}", self.base_url, transform_id);
+
+        tracing::debug!("Getting transform {} from: {}", transform_id, url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::error!("Failed to get transform: HTTP {} - {}", status, error_body);
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            tracing::error!("Failed to parse transform response: {}", e);
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
     // ========== Change Management API Methods (v1.2) ==========
 
     /// Get the base URL for the changes API
