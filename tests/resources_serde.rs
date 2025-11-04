@@ -336,7 +336,7 @@ fn test_policy_with_rules() {
 // ============================================================================
 
 #[test]
-fn test_network_with_http_config() {
+fn test_network_with_tcp_config() {
     let network_json = json!({
         "type": "network",
         "id": "network-123",
@@ -346,7 +346,7 @@ fn test_network_with_http_config() {
         "gateway_id": "gateway-789",
         "enable_wireguard": true,
         "interface": "wg0",
-        "http": {
+        "tcp_config": {
             "bind_address": "0.0.0.0",
             "bind_port": 8080
         },
@@ -358,11 +358,40 @@ fn test_network_with_http_config() {
 
     assert_eq!(network.enable_wireguard, true);
     assert_eq!(network.interface, Some("wg0".to_string()));
-    assert!(network.http.is_some());
+    assert!(network.tcp_config.is_some());
 
-    let http = network.http.unwrap();
-    assert_eq!(http.bind_address, Some("0.0.0.0".to_string()));
-    assert_eq!(http.bind_port, Some(8080));
+    let tcp_config = network.tcp_config.unwrap();
+    assert_eq!(tcp_config.bind_address, Some("0.0.0.0".to_string()));
+    assert_eq!(tcp_config.bind_port, Some(8080));
+}
+
+#[test]
+fn test_network_with_http_backward_compatibility() {
+    // Test that the old "http" field name still works via serde alias
+    let network_json = json!({
+        "type": "network",
+        "id": "network-123",
+        "code": "main-network",
+        "name": "Main Network",
+        "team_id": "team-456",
+        "gateway_id": "gateway-789",
+        "enable_wireguard": false,
+        "http": {
+            "bind_address": "127.0.0.1",
+            "bind_port": 3000
+        },
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z"
+    });
+
+    let network: Network = serde_json::from_value(network_json).unwrap();
+
+    // Old "http" field should be deserialized into tcp_config
+    assert!(network.tcp_config.is_some());
+
+    let tcp_config = network.tcp_config.unwrap();
+    assert_eq!(tcp_config.bind_address, Some("127.0.0.1".to_string()));
+    assert_eq!(tcp_config.bind_port, Some(3000));
 }
 
 // ============================================================================

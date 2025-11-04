@@ -247,19 +247,42 @@ pub struct Network {
     pub enable_wireguard: bool,
     #[serde(default)]
     pub interface: Option<String>,
-    #[serde(default)]
-    pub http: Option<HttpConfig>,
+    #[serde(default, alias = "http")]
+    pub tcp_config: Option<TcpConfig>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
 }
 
-/// HTTP configuration for network
+/// TCP configuration for network - used by all protocol adapters (HTTP, DIMSE, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HttpConfig {
+pub struct TcpConfig {
     pub bind_address: Option<String>,
     pub bind_port: Option<u16>,
+}
+
+/// Runbeam Cloud integration configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Runbeam {
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub code: String,
+    pub name: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub cloud_api_base_url: Option<String>,
+    #[serde(default)]
+    pub poll_interval_secs: Option<u32>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Authentication resource
@@ -301,6 +324,8 @@ pub struct GatewayConfiguration {
     pub policies: Vec<Policy>,
     #[serde(default)]
     pub networks: Vec<Network>,
+    #[serde(default)]
+    pub runbeam: Option<Runbeam>,
 }
 
 /// Change resource for configuration change tracking
