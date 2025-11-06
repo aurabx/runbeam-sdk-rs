@@ -229,9 +229,12 @@ where
 
 /// Load any token using automatic secure storage selection (generic)
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
+/// This function checks multiple storage backends to find the token:
+/// 1. **Keyring** (OS keychain) - checked first if available
+/// 2. **Encrypted filesystem** - checked as fallback
+///
+/// This ensures tokens can be loaded regardless of which backend was used during save,
+/// providing resilience against keyring availability changes between operations.
 ///
 /// # Type Parameters
 ///
@@ -245,7 +248,7 @@ where
 /// # Returns
 ///
 /// Returns `Ok(Some(token))` if a token was found and loaded successfully,
-/// `Ok(None)` if no token file exists, or `Err(StorageError)` if loading failed.
+/// `Ok(None)` if no token file exists in any backend, or `Err(StorageError)` if loading failed.
 ///
 /// # Examples
 ///
@@ -273,41 +276,73 @@ where
         token_path
     );
 
-    let backend = get_storage_backend(instance_id, &token_path).await?;
+    // Check if keyring is disabled
+    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
 
-    // Check if token file exists
-    let exists = match &backend {
-        StorageBackendType::Keyring(storage) => storage.exists_str(&token_path),
-        StorageBackendType::Encrypted(storage) => storage.exists_str(&token_path),
-    };
-
-    if !exists {
-        tracing::debug!("No token file found: type={}", token_type);
-        return Ok(None);
+    // Try keyring first (unless disabled)
+    if !keyring_disabled {
+        tracing::debug!("Attempting to load token from keyring storage");
+        let keyring = KeyringStorage::new("runbeam");
+        
+        if keyring.exists_str(&token_path) {
+            tracing::debug!("Token found in keyring, loading...");
+            match keyring.read_file_str(&token_path).await {
+                Ok(json) => {
+                    // Deserialize token
+                    let token: T = serde_json::from_slice(&json).map_err(|e| {
+                        tracing::error!("Failed to deserialize token from keyring: {}", e);
+                        StorageError::Config(format!("JSON deserialization failed: {}", e))
+                    })?;
+                    
+                    tracing::debug!("Token loaded successfully from keyring: type={}", token_type);
+                    return Ok(Some(token));
+                }
+                Err(e) => {
+                    tracing::warn!("Token exists in keyring but failed to read: {}", e);
+                    // Fall through to try encrypted filesystem
+                }
+            }
+        } else {
+            tracing::debug!("Token not found in keyring, trying encrypted filesystem");
+        }
+    } else {
+        tracing::debug!("Keyring disabled, skipping keyring check");
     }
 
-    // Read token file
-    let json = match backend {
-        StorageBackendType::Keyring(storage) => storage.read_file_str(&token_path).await?,
-        StorageBackendType::Encrypted(storage) => storage.read_file_str(&token_path).await?,
-    };
+    // Try encrypted filesystem as fallback
+    tracing::debug!("Attempting to load token from encrypted filesystem storage");
+    let encrypted = EncryptedFilesystemStorage::new_with_instance(instance_id)
+        .await
+        .map_err(|e| {
+            tracing::debug!("Failed to initialize encrypted storage: {}", e);
+            e
+        })?;
 
-    // Deserialize token
-    let token: T = serde_json::from_slice(&json).map_err(|e| {
-        tracing::error!("Failed to deserialize token: {}", e);
-        StorageError::Config(format!("JSON deserialization failed: {}", e))
-    })?;
+    if encrypted.exists_str(&token_path) {
+        tracing::debug!("Token found in encrypted filesystem, loading...");
+        let json = encrypted.read_file_str(&token_path).await?;
+        
+        // Deserialize token
+        let token: T = serde_json::from_slice(&json).map_err(|e| {
+            tracing::error!("Failed to deserialize token from encrypted filesystem: {}", e);
+            StorageError::Config(format!("JSON deserialization failed: {}", e))
+        })?;
+        
+        tracing::debug!("Token loaded successfully from encrypted filesystem: type={}", token_type);
+        return Ok(Some(token));
+    }
 
-    tracing::debug!("Token loaded successfully: type={}", token_type);
-
-    Ok(Some(token))
+    tracing::debug!("No token file found in any storage backend: type={}", token_type);
+    Ok(None)
 }
 
-/// Clear any token using automatic secure storage selection (generic)
+/// Clear any token from all available storage backends
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
+/// This function clears tokens from both storage backends to ensure complete removal:
+/// 1. **Keyring** (OS keychain) - if available
+/// 2. **Encrypted filesystem** - always checked
+///
+/// This ensures tokens are fully removed regardless of which backend they were stored in.
 ///
 /// # Arguments
 ///
@@ -342,26 +377,50 @@ pub async fn clear_token(instance_id: &str, token_type: &str) -> Result<(), Stor
         token_path
     );
 
-    let backend = get_storage_backend(instance_id, &token_path).await?;
+    let mut cleared_any = false;
 
-    // Check if token file exists
-    let exists = match &backend {
-        StorageBackendType::Keyring(storage) => storage.exists_str(&token_path),
-        StorageBackendType::Encrypted(storage) => storage.exists_str(&token_path),
-    };
+    // Check if keyring is disabled
+    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
 
-    if !exists {
-        tracing::debug!("No token file to clear: type={}", token_type);
-        return Ok(());
+    // Try to clear from keyring first (unless disabled)
+    if !keyring_disabled {
+        let keyring = KeyringStorage::new("runbeam");
+        if keyring.exists_str(&token_path) {
+            tracing::debug!("Clearing token from keyring storage");
+            match keyring.remove_str(&token_path).await {
+                Ok(_) => {
+                    tracing::debug!("Token cleared from keyring");
+                    cleared_any = true;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to clear token from keyring: {}", e);
+                    // Continue to try encrypted filesystem
+                }
+            }
+        }
     }
 
-    // Remove the token file
-    match backend {
-        StorageBackendType::Keyring(storage) => storage.remove_str(&token_path).await?,
-        StorageBackendType::Encrypted(storage) => storage.remove_str(&token_path).await?,
+    // Try to clear from encrypted filesystem
+    if let Ok(encrypted) = EncryptedFilesystemStorage::new_with_instance(instance_id).await {
+        if encrypted.exists_str(&token_path) {
+            tracing::debug!("Clearing token from encrypted filesystem storage");
+            match encrypted.remove_str(&token_path).await {
+                Ok(_) => {
+                    tracing::debug!("Token cleared from encrypted filesystem");
+                    cleared_any = true;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to clear token from encrypted filesystem: {}", e);
+                }
+            }
+        }
     }
 
-    tracing::info!("Token cleared successfully: type={}", token_type);
+    if cleared_any {
+        tracing::info!("Token cleared successfully: type={}", token_type);
+    } else {
+        tracing::debug!("No token file to clear in any storage backend: type={}", token_type);
+    }
 
     Ok(())
 }
