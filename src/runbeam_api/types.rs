@@ -212,6 +212,29 @@ pub struct ConfigChangeAck {
     pub message: Option<String>,
 }
 
+/// Request payload for storing/updating Harmony configuration
+///
+/// This is used by the `harmony.update` endpoint to send TOML configuration
+/// from Harmony instances back to Runbeam Cloud for storage as database models.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreConfigRequest {
+    /// Type of configuration being stored ("gateway", "pipeline", or "transform")
+    #[serde(rename = "type")]
+    pub config_type: String,
+    /// Optional ID for updating existing resources (omitted for creates)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// TOML configuration content
+    pub config: String,
+}
+
+/// Response from storing/updating Harmony configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreConfigResponse {
+    /// HTTP status code (200 on success)
+    pub status: u16,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,8 +324,14 @@ mod tests {
 
         let detail: ConfigChangeDetail = serde_json::from_str(json).unwrap();
         assert_eq!(detail.status, "applied");
-        assert_eq!(detail.acknowledged_at, Some("2025-10-30T20:42:40.000000Z".to_string()));
-        assert_eq!(detail.applied_at, Some("2025-10-30T20:42:45.000000Z".to_string()));
+        assert_eq!(
+            detail.acknowledged_at,
+            Some("2025-10-30T20:42:40.000000Z".to_string())
+        );
+        assert_eq!(
+            detail.applied_at,
+            Some("2025-10-30T20:42:45.000000Z".to_string())
+        );
         assert!(detail.failed_at.is_none());
     }
 
@@ -326,9 +355,79 @@ mod tests {
 
         let detail: ConfigChangeDetail = serde_json::from_str(json).unwrap();
         assert_eq!(detail.status, "failed");
-        assert_eq!(detail.failed_at, Some("2025-10-30T20:42:45.000000Z".to_string()));
-        assert_eq!(detail.error_message, Some("Invalid TOML syntax".to_string()));
+        assert_eq!(
+            detail.failed_at,
+            Some("2025-10-30T20:42:45.000000Z".to_string())
+        );
+        assert_eq!(
+            detail.error_message,
+            Some("Invalid TOML syntax".to_string())
+        );
         assert!(detail.error_details.is_some());
         assert!(detail.applied_at.is_none());
+    }
+
+    #[test]
+    fn test_store_config_request_with_id() {
+        let request = StoreConfigRequest {
+            config_type: "gateway".to_string(),
+            id: Some("01k8ek6h9aahhnrv3benret1nn".to_string()),
+            config: "[proxy]\nid = \"test\"\n".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"type\":\"gateway\""));
+        assert!(json.contains("\"id\":\"01k8ek6h9aahhnrv3benret1nn\""));
+        assert!(json.contains("\"config\":"));
+        assert!(json.contains("[proxy]"));
+
+        // Test deserialization
+        let deserialized: StoreConfigRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.config_type, "gateway");
+        assert_eq!(
+            deserialized.id,
+            Some("01k8ek6h9aahhnrv3benret1nn".to_string())
+        );
+    }
+
+    #[test]
+    fn test_store_config_request_without_id() {
+        let request = StoreConfigRequest {
+            config_type: "pipeline".to_string(),
+            id: None,
+            config: "[pipeline]\nname = \"test\"\n".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"type\":\"pipeline\""));
+        assert!(json.contains("\"config\":"));
+        // Should not contain the id field when None
+        assert!(!json.contains("\"id\""));
+
+        // Test deserialization
+        let deserialized: StoreConfigRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.config_type, "pipeline");
+        assert_eq!(deserialized.id, None);
+    }
+
+    #[test]
+    fn test_store_config_request_type_field_rename() {
+        // Test that the "type" field is correctly serialized despite the field being named config_type
+        let json = r#"{"type":"transform","config":"[transform]\nname = \"test\"\n"}"#;
+        let request: StoreConfigRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.config_type, "transform");
+        assert_eq!(request.id, None);
+    }
+
+    #[test]
+    fn test_store_config_response() {
+        let response = StoreConfigResponse { status: 200 };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":200"));
+
+        // Test deserialization
+        let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, 200);
     }
 }

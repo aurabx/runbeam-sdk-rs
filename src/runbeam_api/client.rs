@@ -1,5 +1,6 @@
 use crate::runbeam_api::types::{
     ApiError, AuthorizeResponse, ConfigChange, ConfigChangeAck, ConfigChangeDetail, RunbeamError,
+    StoreConfigRequest, StoreConfigResponse,
 };
 use serde::Serialize;
 
@@ -825,7 +826,7 @@ impl RunbeamClient {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = RunbeamClient::new("http://runbeam.lndo.site");
     /// let transform = client.get_transform("machine_token", "01k81xczrw551e1qj9rgrf0319").await?;
-    /// 
+    ///
     /// // Extract JOLT specification
     /// if let Some(options) = &transform.data.options {
     ///     if let Some(instructions) = &options.instructions {
@@ -1284,6 +1285,157 @@ impl RunbeamClient {
             RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
         })
     }
+
+    /// Store or update Harmony configuration in Runbeam Cloud
+    ///
+    /// This method sends TOML configuration from Harmony instances back to Runbeam Cloud
+    /// where it is parsed and stored as database models. This is the inverse of the TOML
+    /// generation/download API - it enables Harmony to push configuration updates to the cloud.
+    ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens. The token is passed
+    /// to the server for validation without local verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
+    /// * `config_type` - Type of configuration ("gateway", "pipeline", or "transform")
+    /// * `id` - Optional resource ID for updates (omit for new resources)
+    /// * `config` - TOML configuration content as a string
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(StoreConfigResponse)` with status 200 on success, or `Err(RunbeamError)`
+    /// if the operation fails (404 for not found, 422 for validation errors).
+    ///
+    /// # Examples
+    ///
+    /// ## Creating a new gateway configuration
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let toml_config = r#"
+    /// [proxy]
+    /// id = "gateway-123"
+    /// name = "Production Gateway"
+    /// "#;
+    ///
+    /// let response = client.store_config(
+    ///     "machine_token_abc123",
+    ///     "gateway",
+    ///     None,  // No ID = create new
+    ///     toml_config
+    /// ).await?;
+    ///
+    /// println!("Configuration stored successfully: {}", response.status);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// ## Updating an existing pipeline configuration
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let toml_config = r#"
+    /// [pipeline]
+    /// name = "Updated Pipeline"
+    /// description = "Modified configuration"
+    /// "#;
+    ///
+    /// let response = client.store_config(
+    ///     "machine_token_abc123",
+    ///     "pipeline",
+    ///     Some("01k8pipeline123".to_string()),  // With ID = update existing
+    ///     toml_config
+    /// ).await?;
+    ///
+    /// println!("Configuration updated successfully: {}", response.status);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn store_config(
+        &self,
+        token: impl Into<String>,
+        config_type: impl Into<String>,
+        id: Option<String>,
+        config: impl Into<String>,
+    ) -> Result<StoreConfigResponse, RunbeamError> {
+        let config_type = config_type.into();
+        let config = config.into();
+        let url = format!("{}/api/harmony/update", self.base_url);
+
+        tracing::info!(
+            "Storing {} configuration to Runbeam Cloud (id: {:?})",
+            config_type,
+            id
+        );
+        tracing::debug!("Configuration length: {} bytes", config.len());
+
+        let payload = StoreConfigRequest {
+            config_type: config_type.clone(),
+            id: id.clone(),
+            config,
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to send store config request: {}", e);
+                ApiError::from(e)
+            })?;
+
+        let status = response.status();
+        tracing::debug!("Received response with status: {}", status);
+
+        // Handle error responses
+        if !status.is_success() {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            tracing::error!(
+                "Store config failed: HTTP {} - {}",
+                status.as_u16(),
+                error_body
+            );
+
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        // Parse successful response
+        // Note: The API returns an integer (200), but we wrap it in our response struct
+        let status_code = response.json::<u16>().await.map_err(|e| {
+            tracing::error!("Failed to parse store config response: {}", e);
+            ApiError::Parse(format!("Failed to parse response: {}", e))
+        })?;
+
+        tracing::info!(
+            "Configuration stored successfully: type={}, id={:?}",
+            config_type,
+            id
+        );
+
+        Ok(StoreConfigResponse {
+            status: status_code,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1439,5 +1591,75 @@ mod tests {
         // Test deserialization
         let deserialized: BaseUrlResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.base_url, "https://api.runbeam.io");
+    }
+
+    #[test]
+    fn test_store_config_request_serialization_with_id() {
+        let request = StoreConfigRequest {
+            config_type: "gateway".to_string(),
+            id: Some("01k8ek6h9aahhnrv3benret1nn".to_string()),
+            config: "[proxy]\nid = \"test\"\n".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        // Verify field renaming: config_type -> "type"
+        assert!(json.contains("\"type\":\"gateway\""));
+        assert!(json.contains("\"id\":\"01k8ek6h9aahhnrv3benret1nn\""));
+        assert!(json.contains("\"config\":"));
+        assert!(json.contains("[proxy]"));
+
+        // Test deserialization
+        let deserialized: StoreConfigRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.config_type, "gateway");
+        assert_eq!(
+            deserialized.id,
+            Some("01k8ek6h9aahhnrv3benret1nn".to_string())
+        );
+    }
+
+    #[test]
+    fn test_store_config_request_serialization_without_id() {
+        let request = StoreConfigRequest {
+            config_type: "pipeline".to_string(),
+            id: None,
+            config: "[pipeline]\nname = \"test\"\n".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"type\":\"pipeline\""));
+        assert!(json.contains("\"config\":"));
+        // Should not contain the id field when None
+        assert!(!json.contains("\"id\""));
+
+        // Test deserialization
+        let deserialized: StoreConfigRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.config_type, "pipeline");
+        assert_eq!(deserialized.id, None);
+    }
+
+    #[test]
+    fn test_store_config_request_field_rename() {
+        // Test that the "type" JSON field correctly maps to config_type
+        let json = r#"{"type":"transform","config":"[transform]\nname = \"test\"\n"}"#;
+        let request: StoreConfigRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.config_type, "transform");
+        assert_eq!(request.id, None);
+
+        // Serialize back and verify it uses "type" not "config_type"
+        let serialized = serde_json::to_string(&request).unwrap();
+        assert!(serialized.contains("\"type\":"));
+        assert!(!serialized.contains("\"config_type\":"));
+    }
+
+    #[test]
+    fn test_store_config_response_serialization() {
+        let response = StoreConfigResponse { status: 200 };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"status\":200"));
+
+        // Test deserialization
+        let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, 200);
     }
 }

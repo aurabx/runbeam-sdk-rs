@@ -123,6 +123,7 @@ pub use runbeam_api::{
         MachineToken,
     },
     types::{
-        ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, TeamInfo, UserInfo, UserToken,
+        ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, StoreConfigRequest,
+        StoreConfigResponse, TeamInfo, UserInfo, UserToken,
     },
 };
