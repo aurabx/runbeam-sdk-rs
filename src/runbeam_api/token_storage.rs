@@ -283,7 +283,7 @@ where
     if !keyring_disabled {
         tracing::debug!("Attempting to load token from keyring storage");
         let keyring = KeyringStorage::new("runbeam");
-        
+
         if keyring.exists_str(&token_path) {
             tracing::debug!("Token found in keyring, loading...");
             match keyring.read_file_str(&token_path).await {
@@ -293,8 +293,11 @@ where
                         tracing::error!("Failed to deserialize token from keyring: {}", e);
                         StorageError::Config(format!("JSON deserialization failed: {}", e))
                     })?;
-                    
-                    tracing::debug!("Token loaded successfully from keyring: type={}", token_type);
+
+                    tracing::debug!(
+                        "Token loaded successfully from keyring: type={}",
+                        token_type
+                    );
                     return Ok(Some(token));
                 }
                 Err(e) => {
@@ -321,18 +324,27 @@ where
     if encrypted.exists_str(&token_path) {
         tracing::debug!("Token found in encrypted filesystem, loading...");
         let json = encrypted.read_file_str(&token_path).await?;
-        
+
         // Deserialize token
         let token: T = serde_json::from_slice(&json).map_err(|e| {
-            tracing::error!("Failed to deserialize token from encrypted filesystem: {}", e);
+            tracing::error!(
+                "Failed to deserialize token from encrypted filesystem: {}",
+                e
+            );
             StorageError::Config(format!("JSON deserialization failed: {}", e))
         })?;
-        
-        tracing::debug!("Token loaded successfully from encrypted filesystem: type={}", token_type);
+
+        tracing::debug!(
+            "Token loaded successfully from encrypted filesystem: type={}",
+            token_type
+        );
         return Ok(Some(token));
     }
 
-    tracing::debug!("No token file found in any storage backend: type={}", token_type);
+    tracing::debug!(
+        "No token file found in any storage backend: type={}",
+        token_type
+    );
     Ok(None)
 }
 
@@ -419,7 +431,10 @@ pub async fn clear_token(instance_id: &str, token_type: &str) -> Result<(), Stor
     if cleared_any {
         tracing::info!("Token cleared successfully: type={}", token_type);
     } else {
-        tracing::debug!("No token file to clear in any storage backend: type={}", token_type);
+        tracing::debug!(
+            "No token file to clear in any storage backend: type={}",
+            token_type
+        );
     }
 
     Ok(())

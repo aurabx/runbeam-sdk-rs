@@ -229,9 +229,11 @@ pub struct StoreConfigRequest {
 }
 
 /// Response from storing/updating Harmony configuration
+///
+/// The API returns a simple integer 200 on success.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreConfigResponse {
-    /// HTTP status code (200 on success)
+    /// HTTP status code (always 200 on success)
     pub status: u16,
 }
 
