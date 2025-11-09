@@ -1,6 +1,5 @@
 use crate::runbeam_api::types::{
-    ApiError, AuthorizeResponse, ConfigChange, ConfigChangeAck, ConfigChangeDetail, RunbeamError,
-    StoreConfigRequest, StoreConfigResponse,
+    ApiError, AuthorizeResponse, RunbeamError, StoreConfigRequest, StoreConfigResponse,
 };
 use serde::Serialize;
 
@@ -201,56 +200,191 @@ impl RunbeamClient {
         &self.base_url
     }
 
-    /// List pending config changes for a gateway
+    /// List all pending configuration changes (admin/user view)
     ///
-    /// Returns a list of config changes in the order returned by the API.
-    /// **Important**: Changes should be processed in reverse order (oldest first)
-    /// to maintain correct configuration state progression.
+    /// This endpoint lists ALL changes across the system and is intended for
+    /// administrative and user interfaces. Gateway instances should use
+    /// `list_changes_for_gateway` instead.
     ///
-    /// # Response Fields
+    /// # Authentication
     ///
-    /// - `id`: Unique change identifier
-    /// - `status`: Current status ("queued", "acknowledged", "applied", "failed")
-    /// - `type`: Change type ("gateway" or "pipeline")
-    /// - `gateway_id`: Gateway this change applies to
-    /// - `pipeline_id`: Pipeline ID (null for gateway-level changes)
-    /// - `created_at`: ISO 8601 timestamp when change was created
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens.
     ///
-    /// # Change Status Lifecycle
+    /// # Arguments
     ///
-    /// 1. **queued** - Change created, waiting to be fetched
-    /// 2. **acknowledged** - Gateway has fetched the change details
-    /// 3. **applied** - Change successfully applied to configuration
-    /// 4. **failed** - Change application failed (see error fields)
+    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
     ///
     /// # Example
     ///
     /// ```no_run
-    /// # use runbeam_sdk::RunbeamClient;
-    /// # async fn example(client: &RunbeamClient, token: &str) -> Result<(), Box<dyn std::error::Error>> {
-    /// let changes = client.list_config_changes(token).await?;
+    /// use runbeam_sdk::RunbeamClient;
     ///
-    /// // Process in reverse order (oldest first)
-    /// for change in changes.into_iter().rev() {
-    ///     println!("Change {}: {} ({})", change.id, change.change_type, change.status);
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let changes = client.list_changes("user_jwt_or_sanctum_token").await?;
+    /// println!("Found {} changes across all gateways", changes.data.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_changes(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Change>,
+        RunbeamError,
+    > {
+        let url = format!("{}/api/harmony/changes", self.base_url);
+
+        tracing::debug!("Listing all changes from: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::error!("Failed to list changes: HTTP {} - {}", status, error_body);
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            tracing::error!("Failed to parse changes response: {}", e);
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// List pending configuration changes for a specific gateway
+    ///
+    /// This endpoint returns changes specific to a gateway and is what Harmony
+    /// Proxy instances should call when polling for configuration updates
+    /// (typically every 30 seconds).
+    ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
+    /// * `gateway_id` - The gateway ID to list changes for
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let changes = client.list_changes_for_gateway(
+    ///     "machine_token_abc123",
+    ///     "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    /// ).await?;
+    /// println!("Found {} pending changes for this gateway", changes.data.len());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_changes_for_gateway(
+        &self,
+        token: impl Into<String>,
+        gateway_id: impl Into<String>,
+    ) -> Result<
+        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Change>,
+        RunbeamError,
+    > {
+        let gateway_id = gateway_id.into();
+        let url = format!("{}/api/harmony/changes/{}", self.base_url, gateway_id);
+
+        tracing::debug!("Listing changes for gateway {} from: {}", gateway_id, url);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(ApiError::from)?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::error!(
+                "Failed to list changes for gateway {}: HTTP {} - {}",
+                gateway_id,
+                status,
+                error_body
+            );
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        response.json().await.map_err(|e| {
+            tracing::error!("Failed to parse changes response: {}", e);
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        })
+    }
+
+    /// Get detailed information about a specific configuration change
+    ///
+    /// Retrieve full details of a change including TOML configuration content,
+    /// metadata, and status information.
+    ///
+    /// # Authentication
+    ///
+    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
+    /// * `change_id` - The change ID to retrieve
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let change = client.get_change("machine_token_abc123", "change-123").await?;
+    /// 
+    /// if let Some(toml_config) = &change.data.toml_config {
+    ///     println!("TOML config:\n{}", toml_config);
     /// }
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// # Arguments
-    ///
-    /// * `gateway_token` - Machine token for the gateway
-    pub async fn list_config_changes(
+    pub async fn get_change(
         &self,
-        gateway_token: impl Into<String>,
-    ) -> Result<Vec<ConfigChange>, RunbeamError> {
-        let url = format!("{}/api/harmony/config-changes", self.base_url);
+        token: impl Into<String>,
+        change_id: impl Into<String>,
+    ) -> Result<
+        crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Change>,
+        RunbeamError,
+    > {
+        let change_id = change_id.into();
+        let url = format!("{}/api/harmony/changes/{}", self.base_url, change_id);
+
+        tracing::debug!("Getting change {} from: {}", change_id, url);
 
         let response = self
             .client
             .get(&url)
-            .header("Authorization", format!("Bearer {}", gateway_token.into()))
+            .header("Authorization", format!("Bearer {}", token.into()))
             .send()
             .await
             .map_err(ApiError::from)?;
@@ -261,6 +395,7 @@ impl RunbeamClient {
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
+            tracing::error!("Failed to get change: HTTP {} - {}", status, error_body);
             return Err(RunbeamError::Api(ApiError::Http {
                 status: status.as_u16(),
                 message: error_body,
@@ -268,220 +403,7 @@ impl RunbeamClient {
         }
 
         response.json().await.map_err(|e| {
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
-
-    /// Get detailed config change content
-    ///
-    /// Returns the full configuration change including TOML content, metadata,
-    /// timestamps, and error information if applicable.
-    ///
-    /// # Response Fields
-    ///
-    /// - `id`: Unique change identifier
-    /// - `status`: Current status
-    /// - `type`: Change type ("gateway" or "pipeline")
-    /// - `gateway_id`: Gateway this change applies to
-    /// - `pipeline_id`: Pipeline ID (null for gateway-level changes)
-    /// - `toml_config`: TOML configuration content to be applied
-    /// - `metadata`: Additional metadata (e.g., gateway_name, generated_at)
-    /// - `created_at`: When the change was created
-    /// - `acknowledged_at`: When the gateway acknowledged receipt (null if not yet acknowledged)
-    /// - `applied_at`: When successfully applied (null if not yet applied)
-    /// - `failed_at`: When application failed (null if not failed)
-    /// - `error_message`: Human-readable error message (null if no error)
-    /// - `error_details`: Structured error details (null if no error)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use runbeam_sdk::RunbeamClient;
-    /// # async fn example(client: &RunbeamClient, token: &str, change_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    /// let detail = client.get_config_change(token, change_id).await?;
-    ///
-    /// // Write TOML config to file
-    /// std::fs::write("/etc/harmony/config.toml", &detail.toml_config)?;
-    ///
-    /// println!("Applied change: {} (status: {})", detail.id, detail.status);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Arguments
-    ///
-    /// * `gateway_token` - Machine token for the gateway
-    /// * `change_id` - ID of the config change
-    pub async fn get_config_change(
-        &self,
-        gateway_token: impl Into<String>,
-        change_id: impl Into<String>,
-    ) -> Result<ConfigChangeDetail, RunbeamError> {
-        let url = format!(
-            "{}/api/harmony/config-changes/{}",
-            self.base_url,
-            change_id.into()
-        );
-
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", gateway_token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
-
-    /// Acknowledge receipt of a config change
-    ///
-    /// # Arguments
-    ///
-    /// * `gateway_token` - Machine token for the gateway
-    /// * `change_id` - ID of the config change
-    pub async fn acknowledge_config_change(
-        &self,
-        gateway_token: impl Into<String>,
-        change_id: impl Into<String>,
-    ) -> Result<ConfigChangeAck, RunbeamError> {
-        let url = format!(
-            "{}/api/harmony/config-changes/{}/acknowledge",
-            self.base_url,
-            change_id.into()
-        );
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", gateway_token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
-
-    /// Report successful application of a config change
-    ///
-    /// # Arguments
-    ///
-    /// * `gateway_token` - Machine token for the gateway
-    /// * `change_id` - ID of the config change
-    pub async fn report_config_applied(
-        &self,
-        gateway_token: impl Into<String>,
-        change_id: impl Into<String>,
-    ) -> Result<ConfigChangeAck, RunbeamError> {
-        let url = format!(
-            "{}/api/harmony/config-changes/{}/applied",
-            self.base_url,
-            change_id.into()
-        );
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", gateway_token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
-
-    /// Report failed application of a config change
-    ///
-    /// # Arguments
-    ///
-    /// * `gateway_token` - Machine token for the gateway
-    /// * `change_id` - ID of the config change
-    /// * `error` - Error message describing the failure
-    pub async fn report_config_failed(
-        &self,
-        gateway_token: impl Into<String>,
-        change_id: impl Into<String>,
-        error: impl Into<String>,
-    ) -> Result<ConfigChangeAck, RunbeamError> {
-        let url = format!(
-            "{}/api/harmony/config-changes/{}/failed",
-            self.base_url,
-            change_id.into()
-        );
-
-        #[derive(Serialize)]
-        struct FailurePayload {
-            error: String,
-        }
-
-        let payload = FailurePayload {
-            error: error.into(),
-        };
-
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", gateway_token.into()))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
+            tracing::error!("Failed to parse change response: {}", e);
             RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
         })
     }
@@ -907,7 +829,7 @@ impl RunbeamClient {
         &self,
         token: impl Into<String>,
     ) -> Result<crate::runbeam_api::resources::BaseUrlResponse, RunbeamError> {
-        let url = format!("{}/api/changes/base-url", self.base_url);
+        let url = format!("{}/api/harmony/base-url", self.base_url);
 
         tracing::debug!("Getting base URL from: {}", url);
 
@@ -938,133 +860,6 @@ impl RunbeamClient {
         })
     }
 
-    /// List pending configuration changes for the authenticated gateway
-    ///
-    /// Retrieve queued configuration changes that are ready to be applied.
-    /// Gateways typically poll this endpoint every 30 seconds to check for updates.
-    ///
-    /// # Authentication
-    ///
-    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens.
-    ///
-    /// # Arguments
-    ///
-    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use runbeam_sdk::RunbeamClient;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
-    /// let changes = client.list_changes("machine_token_abc123").await?;
-    /// println!("Found {} pending changes", changes.data.len());
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn list_changes(
-        &self,
-        token: impl Into<String>,
-    ) -> Result<
-        crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Change>,
-        RunbeamError,
-    > {
-        let url = format!("{}/api/changes", self.base_url);
-
-        tracing::debug!("Listing changes from: {}", url);
-
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            tracing::error!("Failed to list changes: HTTP {} - {}", status, error_body);
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
-            tracing::error!("Failed to parse changes response: {}", e);
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
-
-    /// Get details of a specific configuration change
-    ///
-    /// Retrieve detailed information about a specific change by its ID.
-    ///
-    /// # Authentication
-    ///
-    /// Accepts JWT tokens, Sanctum API tokens, or machine tokens.
-    ///
-    /// # Arguments
-    ///
-    /// * `token` - Authentication token (JWT, Sanctum, or machine token)
-    /// * `change_id` - The change ID to retrieve
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use runbeam_sdk::RunbeamClient;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
-    /// let change = client.get_change("machine_token_abc123", "change-123").await?;
-    /// println!("Change status: {}", change.data.status);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub async fn get_change(
-        &self,
-        token: impl Into<String>,
-        change_id: impl Into<String>,
-    ) -> Result<
-        crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Change>,
-        RunbeamError,
-    > {
-        let change_id = change_id.into();
-        let url = format!("{}/api/changes/{}", self.base_url, change_id);
-
-        tracing::debug!("Getting change {} from: {}", change_id, url);
-
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            tracing::error!("Failed to get change: HTTP {} - {}", status, error_body);
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
-        }
-
-        response.json().await.map_err(|e| {
-            tracing::error!("Failed to parse change response: {}", e);
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
-    }
 
     /// Acknowledge receipt of multiple configuration changes
     ///
@@ -1097,8 +892,8 @@ impl RunbeamClient {
         &self,
         token: impl Into<String>,
         change_ids: Vec<String>,
-    ) -> Result<serde_json::Value, RunbeamError> {
-        let url = format!("{}/api/changes/acknowledge", self.base_url);
+    ) -> Result<crate::runbeam_api::resources::AcknowledgeChangesResponse, RunbeamError> {
+        let url = format!("{}/api/harmony/changes/acknowledge", self.base_url);
 
         tracing::info!("Acknowledging {} changes", change_ids.len());
         tracing::debug!("Change IDs: {:?}", change_ids);
@@ -1167,9 +962,9 @@ impl RunbeamClient {
         &self,
         token: impl Into<String>,
         change_id: impl Into<String>,
-    ) -> Result<serde_json::Value, RunbeamError> {
+    ) -> Result<crate::runbeam_api::resources::ChangeAppliedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/api/changes/{}/applied", self.base_url, change_id);
+        let url = format!("{}/api/harmony/changes/{}/applied", self.base_url, change_id);
 
         tracing::info!("Marking change {} as applied", change_id);
 
@@ -1242,9 +1037,9 @@ impl RunbeamClient {
         change_id: impl Into<String>,
         error: String,
         details: Option<Vec<String>>,
-    ) -> Result<serde_json::Value, RunbeamError> {
+    ) -> Result<crate::runbeam_api::resources::ChangeFailedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/api/changes/{}/failed", self.base_url, change_id);
+        let url = format!("{}/api/harmony/changes/{}/failed", self.base_url, change_id);
 
         tracing::warn!("Marking change {} as failed: {}", change_id, error);
         if let Some(ref details) = details {
@@ -1491,30 +1286,61 @@ mod tests {
     fn test_change_serialization() {
         use crate::runbeam_api::resources::Change;
 
-        let change = Change {
-            id: "change-123".to_string(),
-            resource_type: "change".to_string(),
-            gateway_id: "gateway-456".to_string(),
-            status: "pending".to_string(),
-            operation: "create".to_string(),
-            change_resource_type: "endpoint".to_string(),
-            resource_id: "endpoint-789".to_string(),
-            payload: serde_json::json!({"name": "test-endpoint"}),
-            error: None,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        // Test Change with metadata (list view)
+        let change_metadata = Change {
+            id: "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            status: Some("pending".to_string()),
+            resource_type: "gateway".to_string(),
+            gateway_id: "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            pipeline_id: None,
+            toml_config: None,
+            metadata: None,
+            created_at: "2025-01-07T01:00:00+00:00".to_string(),
+            acknowledged_at: None,
+            applied_at: None,
+            failed_at: None,
+            error_message: None,
+            error_details: None,
         };
 
-        let json = serde_json::to_string(&change).unwrap();
-        assert!(json.contains("\"id\":\"change-123\""));
-        assert!(json.contains("\"gateway_id\":\"gateway-456\""));
-        assert!(json.contains("\"status\":\"pending\""));
-        assert!(json.contains("\"operation\":\"create\""));
+        let json = serde_json::to_string(&change_metadata).unwrap();
+        assert!(json.contains("\"id\":\"01JBXXXXXXXXXXXXXXXXXXXXXXXXXX\""));
+        assert!(json.contains("\"gateway_id\":\"01JBXXXXXXXXXXXXXXXXXXXXXXXXXX\""));
+        assert!(json.contains("\"type\":\"gateway\""));
 
         // Test deserialization
         let deserialized: Change = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.id, "change-123");
-        assert_eq!(deserialized.status, "pending");
+        assert_eq!(deserialized.id, "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX");
+        assert_eq!(deserialized.status, Some("pending".to_string()));
+        assert_eq!(deserialized.resource_type, "gateway");
+
+        // Test Change with full details (detail view)
+        let change_detail = Change {
+            id: "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            status: Some("applied".to_string()),
+            resource_type: "gateway".to_string(),
+            gateway_id: "01JBXXXXXXXXXXXXXXXXXXXXXXXXXX".to_string(),
+            pipeline_id: None,
+            toml_config: Some("[proxy]\nname = \"test\"".to_string()),
+            metadata: Some(serde_json::json!({"gateway_name": "test-gateway"})),
+            created_at: "2025-01-07T01:00:00+00:00".to_string(),
+            acknowledged_at: Some("2025-01-07T01:00:05+00:00".to_string()),
+            applied_at: Some("2025-01-07T01:00:10+00:00".to_string()),
+            failed_at: None,
+            error_message: None,
+            error_details: None,
+        };
+
+        let json = serde_json::to_string(&change_detail).unwrap();
+        assert!(json.contains("toml_config"));
+        assert!(json.contains("acknowledged_at"));
+        assert!(json.contains("applied_at"));
+
+        // Test deserialization of detail view
+        let deserialized: Change = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.toml_config.is_some());
+        assert!(deserialized.acknowledged_at.is_some());
+        assert!(deserialized.applied_at.is_some());
     }
 
     #[test]
@@ -1661,5 +1487,84 @@ mod tests {
         // Test deserialization
         let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.status, 200);
+    }
+
+    #[test]
+    fn test_acknowledge_changes_response_serialization() {
+        use crate::runbeam_api::resources::AcknowledgeChangesResponse;
+
+        // Test successful acknowledgment
+        let response = AcknowledgeChangesResponse {
+            acknowledged: vec![
+                "change-1".to_string(),
+                "change-2".to_string(),
+                "change-3".to_string(),
+            ],
+            failed: vec![],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"acknowledged\":"));
+        assert!(json.contains("\"failed\":"));
+        assert!(json.contains("change-1"));
+
+        // Test deserialization
+        let deserialized: AcknowledgeChangesResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.acknowledged.len(), 3);
+        assert_eq!(deserialized.failed.len(), 0);
+
+        // Test partial failure
+        let response_with_failures = AcknowledgeChangesResponse {
+            acknowledged: vec!["change-1".to_string()],
+            failed: vec!["change-2".to_string(), "change-3".to_string()],
+        };
+
+        let json = serde_json::to_string(&response_with_failures).unwrap();
+        let deserialized: AcknowledgeChangesResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.acknowledged.len(), 1);
+        assert_eq!(deserialized.failed.len(), 2);
+    }
+
+    #[test]
+    fn test_change_status_response_serialization() {
+        use crate::runbeam_api::resources::{
+            ChangeAppliedResponse, ChangeFailedResponse, ChangeStatusResponse,
+        };
+
+        // Test ChangeStatusResponse
+        let response = ChangeStatusResponse {
+            success: true,
+            message: "Change marked as applied".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"message\":\"Change marked as applied\""));
+
+        // Test deserialization
+        let deserialized: ChangeStatusResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.success, true);
+        assert_eq!(deserialized.message, "Change marked as applied");
+
+        // Test ChangeAppliedResponse (type alias)
+        let applied_response: ChangeAppliedResponse = ChangeStatusResponse {
+            success: true,
+            message: "Change marked as applied".to_string(),
+        };
+
+        let json = serde_json::to_string(&applied_response).unwrap();
+        let deserialized: ChangeAppliedResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.success, true);
+
+        // Test ChangeFailedResponse (type alias)
+        let failed_response: ChangeFailedResponse = ChangeStatusResponse {
+            success: true,
+            message: "Change marked as failed".to_string(),
+        };
+
+        let json = serde_json::to_string(&failed_response).unwrap();
+        let deserialized: ChangeFailedResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.success, true);
+        assert_eq!(deserialized.message, "Change marked as failed");
     }
 }

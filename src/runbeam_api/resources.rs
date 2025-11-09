@@ -328,23 +328,43 @@ pub struct GatewayConfiguration {
     pub runbeam: Option<Runbeam>,
 }
 
-/// Change resource for configuration change tracking
+/// Change resource for configuration change tracking (API v1.0)
+/// 
+/// This represents a configuration change that needs to be applied to a gateway.
+/// The API returns two different levels of detail:
+/// 
+/// 1. ChangeMetadata (list view) - returned from `/api/harmony/changes` endpoints
+///    Contains: id, status, type, gateway_id, created_at
+/// 
+/// 2. ChangeResource (detail view) - returned from `/api/harmony/changes/{change}` endpoint  
+///    Contains all metadata fields plus: pipeline_id, toml_config, metadata, timestamps, error info
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Change {
     pub id: String,
+    #[serde(default)]
+    pub status: Option<String>,
     #[serde(rename = "type")]
     pub resource_type: String,
     pub gateway_id: String,
-    pub status: String,
-    pub operation: String,
-    #[serde(rename = "resourceType")]
-    pub change_resource_type: String,
-    pub resource_id: String,
-    pub payload: serde_json::Value,
     #[serde(default)]
-    pub error: Option<String>,
+    pub pipeline_id: Option<String>,
+    /// TOML configuration content (only present in detail view)
+    #[serde(default)]
+    pub toml_config: Option<String>,
+    /// Additional metadata (only present in detail view)
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
     pub created_at: String,
-    pub updated_at: String,
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    #[serde(default)]
+    pub applied_at: Option<String>,
+    #[serde(default)]
+    pub failed_at: Option<String>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub error_details: Option<serde_json::Value>,
 }
 
 /// Response from the base URL discovery endpoint
@@ -366,3 +386,23 @@ pub struct ChangeFailedRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Vec<String>>,
 }
+
+/// Response from acknowledging multiple changes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AcknowledgeChangesResponse {
+    pub acknowledged: Vec<String>,
+    pub failed: Vec<String>,
+}
+
+/// Response from marking a change as applied or failed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeStatusResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Type alias for change applied response
+pub type ChangeAppliedResponse = ChangeStatusResponse;
+
+/// Type alias for change failed response  
+pub type ChangeFailedResponse = ChangeStatusResponse;
