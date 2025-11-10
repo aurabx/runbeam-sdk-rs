@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.5.0] - 2025-11-10
+
 ### Changed
 
 - **⚠️ BREAKING CHANGE: Change Management API Endpoints**
@@ -21,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Migration required**: Applications using Change Management API must update to use new endpoints
   - Requires Runbeam API v1.2 or later
   - No backwards compatibility - old endpoints are no longer supported
+
+### Added
+
+- Support for pushing configuration to Runbeam Cloud via `harmony.update` endpoint
+- Transform resource retrieval functionality
+- Updated API client to match current Runbeam API specification
+
+### Fixed
+
+- Keyring storage compatibility on macOS
+- Various configuration synchronization issues
+- Test compilation errors with updated API structures
 
 ## [0.4.0] - 2025-11-03
 
@@ -154,6 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.5.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.0...v0.3.1
