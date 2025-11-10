@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
     pub data: Vec<T>,
-    pub links: PaginationLinks,
-    pub meta: PaginationMeta,
+    #[serde(default)]
+    pub links: Option<PaginationLinks>,
+    #[serde(default)]
+    pub meta: Option<PaginationMeta>,
 }
 
 /// Pagination links
@@ -23,6 +25,8 @@ pub struct PaginationMeta {
     pub current_page: u32,
     pub from: Option<u32>,
     pub last_page: u32,
+    #[serde(default)]
+    pub links: Option<Vec<serde_json::Value>>,  // Laravel pagination links array
     pub path: Option<String>,
     pub per_page: u32,
     pub to: Option<u32>,
@@ -370,7 +374,14 @@ pub struct Change {
 /// Response from the base URL discovery endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BaseUrlResponse {
+    /// Base URL for the Harmony API (e.g., https://runbeam.lndo.site/api)
     pub base_url: String,
+    /// Optional path for changes API (e.g., "/")
+    #[serde(default)]
+    pub changes_path: Option<String>,
+    /// Optional fully resolved URL (base_url + changes_path)
+    #[serde(default)]
+    pub full_url: Option<String>,
 }
 
 /// Request payload for acknowledging multiple changes

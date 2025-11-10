@@ -183,11 +183,35 @@ pub struct StoreConfigRequest {
 
 /// Response from storing/updating Harmony configuration
 ///
-/// The API returns a simple integer 200 on success.
+/// The API returns UpdateSuccessResource format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreConfigResponse {
-    /// HTTP status code (always 200 on success)
-    pub status: u16,
+    /// Success flag
+    pub success: bool,
+    /// Success message
+    pub message: String,
+    /// Response data with model and change info
+    pub data: StoreConfigResponseData,
+}
+
+/// Data section of store config response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreConfigResponseData {
+    /// Model information
+    pub model: StoreConfigModel,
+    // Change info omitted for now - can add if needed
+}
+
+/// Model information from store config response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreConfigModel {
+    /// Model ID (ULID)
+    pub id: String,
+    /// Model type ("gateway", "pipeline", "transform")
+    #[serde(rename = "type")]
+    pub model_type: String,
+    /// Action taken ("created", "updated")
+    pub action: String,
 }
 
 #[cfg(test)]
@@ -248,13 +272,24 @@ mod tests {
 
     #[test]
     fn test_store_config_response() {
-        let response = StoreConfigResponse { status: 200 };
+        let json = r#"{
+            "success": true,
+            "message": "Gateway configuration updated successfully",
+            "data": {
+                "model": {
+                    "id": "01k9npa4tatmwddk66xxpcr2r0",
+                    "type": "gateway",
+                    "action": "updated"
+                },
+                "change": {}
+            }
+        }"#;
 
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"status\":200"));
-
-        // Test deserialization
-        let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.status, 200);
+        let response: StoreConfigResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.success, true);
+        assert!(response.message.contains("updated successfully"));
+        assert_eq!(response.data.model.id, "01k9npa4tatmwddk66xxpcr2r0");
+        assert_eq!(response.data.model.model_type, "gateway");
+        assert_eq!(response.data.model.action, "updated");
     }
 }

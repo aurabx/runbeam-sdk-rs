@@ -126,7 +126,7 @@ impl RunbeamClient {
         );
 
         // Construct the authorization endpoint URL
-        let url = format!("{}/api/harmony/authorize", self.base_url);
+        let url = format!("{}/harmony/authorize", self.base_url);
 
         // Build request payload
         let payload = AuthorizeRequest {
@@ -233,7 +233,7 @@ impl RunbeamClient {
         crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Change>,
         RunbeamError,
     > {
-        let url = format!("{}/api/harmony/changes", self.base_url);
+        let url = format!("{}/harmony/changes", self.base_url);
 
         tracing::debug!("Listing all changes from: {}", url);
 
@@ -303,7 +303,7 @@ impl RunbeamClient {
         RunbeamError,
     > {
         let gateway_id = gateway_id.into();
-        let url = format!("{}/api/harmony/changes/{}", self.base_url, gateway_id);
+        let url = format!("{}/harmony/changes/{}", self.base_url, gateway_id);
 
         tracing::debug!("Listing changes for gateway {} from: {}", gateway_id, url);
 
@@ -333,9 +333,14 @@ impl RunbeamClient {
             }));
         }
 
-        response.json().await.map_err(|e| {
-            tracing::error!("Failed to parse changes response: {}", e);
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+        let response_text = response.text().await.map_err(|e| {
+            tracing::error!("Failed to read response body: {}", e);
+            RunbeamError::Api(ApiError::Parse(format!("Failed to read response: {}", e)))
+        })?;
+
+        serde_json::from_str(&response_text).map_err(|e| {
+            tracing::error!("Failed to parse changes response: {} - Response body: {}", e, response_text);
+            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {} - Body: {}", e, response_text)))
         })
     }
 
@@ -377,7 +382,7 @@ impl RunbeamClient {
         RunbeamError,
     > {
         let change_id = change_id.into();
-        let url = format!("{}/api/harmony/changes/{}", self.base_url, change_id);
+        let url = format!("{}/harmony/change/{}", self.base_url, change_id);
 
         tracing::debug!("Getting change {} from: {}", change_id, url);
 
@@ -427,7 +432,7 @@ impl RunbeamClient {
         crate::runbeam_api::resources::PaginatedResponse<crate::runbeam_api::resources::Gateway>,
         RunbeamError,
     > {
-        let url = format!("{}/api/gateways", self.base_url);
+        let url = format!("{}/gateways", self.base_url);
 
         let response = self
             .client
@@ -473,7 +478,7 @@ impl RunbeamClient {
         crate::runbeam_api::resources::ResourceResponse<crate::runbeam_api::resources::Gateway>,
         RunbeamError,
     > {
-        let url = format!("{}/api/gateways/{}", self.base_url, gateway_id.into());
+        let url = format!("{}/gateways/{}", self.base_url, gateway_id.into());
 
         let response = self
             .client
@@ -829,35 +834,78 @@ impl RunbeamClient {
         &self,
         token: impl Into<String>,
     ) -> Result<crate::runbeam_api::resources::BaseUrlResponse, RunbeamError> {
-        let url = format!("{}/api/harmony/base-url", self.base_url);
+        let token = token.into();
+        // Try both with and without "/api" to support configs that provide either
+        let candidates = [
+            format!("{}/api/harmony/base-url", self.base_url),
+            format!("{}/harmony/base-url", self.base_url),
+        ];
 
-        tracing::debug!("Getting base URL from: {}", url);
+        let mut last_err: Option<RunbeamError> = None;
+        for url in candidates {
+            tracing::debug!("Getting base URL from: {}", url);
+            let resp = self
+                .client
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
+                .await;
 
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token.into()))
-            .send()
-            .await
-            .map_err(ApiError::from)?;
+            let response = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = Some(ApiError::from(e).into());
+                    continue;
+                }
+            };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            tracing::error!("Failed to get base URL: HTTP {} - {}", status, error_body);
-            return Err(RunbeamError::Api(ApiError::Http {
-                status: status.as_u16(),
-                message: error_body,
-            }));
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_body = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                tracing::warn!(
+                    "Base URL discovery attempt failed: HTTP {} - {} (url: {})",
+                    status,
+                    error_body,
+                    url
+                );
+                last_err = Some(RunbeamError::Api(ApiError::Http {
+                    status: status.as_u16(),
+                    message: error_body,
+                }));
+                continue;
+            }
+
+            let parsed = response.json().await.map_err(|e| {
+                tracing::warn!("Failed to parse base URL response from {}: {}", url, e);
+                RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
+            });
+            if parsed.is_ok() {
+                return parsed;
+            } else {
+                last_err = Some(parsed.err().unwrap());
+            }
         }
 
-        response.json().await.map_err(|e| {
-            tracing::error!("Failed to parse base URL response: {}", e);
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {}", e)))
-        })
+        Err(last_err.unwrap_or_else(|| RunbeamError::Api(ApiError::Request(
+            "Base URL discovery failed for all candidates".to_string(),
+        ))))
+    }
+
+    /// Discover and return a new client with the resolved base URL
+    pub async fn discover_base_url(
+        &self,
+        token: impl Into<String>,
+    ) -> Result<Self, RunbeamError> {
+        let resp = self.get_base_url(token).await?;
+        let discovered = resp
+            .full_url
+            .or_else(|| Some(resp.base_url))
+            .unwrap();
+        tracing::info!("Discovered Runbeam API base URL: {}", discovered);
+        Ok(Self::new(discovered))
     }
 
 
@@ -893,7 +941,7 @@ impl RunbeamClient {
         token: impl Into<String>,
         change_ids: Vec<String>,
     ) -> Result<crate::runbeam_api::resources::AcknowledgeChangesResponse, RunbeamError> {
-        let url = format!("{}/api/harmony/changes/acknowledge", self.base_url);
+        let url = format!("{}/harmony/changes/acknowledge", self.base_url);
 
         tracing::info!("Acknowledging {} changes", change_ids.len());
         tracing::debug!("Change IDs: {:?}", change_ids);
@@ -964,7 +1012,7 @@ impl RunbeamClient {
         change_id: impl Into<String>,
     ) -> Result<crate::runbeam_api::resources::ChangeAppliedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/api/harmony/changes/{}/applied", self.base_url, change_id);
+        let url = format!("{}/harmony/changes/{}/applied", self.base_url, change_id);
 
         tracing::info!("Marking change {} as applied", change_id);
 
@@ -1039,7 +1087,7 @@ impl RunbeamClient {
         details: Option<Vec<String>>,
     ) -> Result<crate::runbeam_api::resources::ChangeFailedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/api/harmony/changes/{}/failed", self.base_url, change_id);
+        let url = format!("{}/harmony/changes/{}/failed", self.base_url, change_id);
 
         tracing::warn!("Marking change {} as failed: {}", change_id, error);
         if let Some(ref details) = details {
@@ -1164,7 +1212,7 @@ impl RunbeamClient {
     ) -> Result<StoreConfigResponse, RunbeamError> {
         let config_type = config_type.into();
         let config = config.into();
-        let url = format!("{}/api/harmony/update", self.base_url);
+        let url = format!("{}/harmony/update", self.base_url);
 
         tracing::info!(
             "Storing {} configuration to Runbeam Cloud (id: {:?})",
@@ -1214,22 +1262,20 @@ impl RunbeamClient {
             }));
         }
 
-        // Parse successful response
-        // Note: The API returns an integer (200), but we wrap it in our response struct
-        let status_code = response.json::<u16>().await.map_err(|e| {
+        // Parse successful response (UpdateSuccessResource format)
+        let response_data = response.json::<StoreConfigResponse>().await.map_err(|e| {
             tracing::error!("Failed to parse store config response: {}", e);
             ApiError::Parse(format!("Failed to parse response: {}", e))
         })?;
 
         tracing::info!(
-            "Configuration stored successfully: type={}, id={:?}",
+            "Configuration stored successfully: type={}, id={:?}, action={}",
             config_type,
-            id
+            id,
+            response_data.data.model.action
         );
 
-        Ok(StoreConfigResponse {
-            status: status_code,
-        })
+        Ok(response_data)
     }
 }
 

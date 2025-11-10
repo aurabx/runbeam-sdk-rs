@@ -300,7 +300,7 @@ async fn test_list_changes_success_with_pending_changes() {
     assert_eq!(response.data[0].id, "change-001");
     assert_eq!(response.data[0].status, Some("pending".to_string()));
     assert_eq!(response.data[1].id, "change-002");
-    assert_eq!(response.meta.total, 2);
+    assert_eq!(response.meta.as_ref().unwrap().total, 2);
 }
 
 #[tokio::test]
@@ -340,7 +340,34 @@ async fn test_list_changes_empty_results() {
     assert!(result.is_ok());
     let response = result.unwrap();
     assert_eq!(response.data.len(), 0);
-    assert_eq!(response.meta.total, 0);
+    assert_eq!(response.meta.as_ref().unwrap().total, 0);
+}
+
+#[tokio::test]
+async fn test_list_changes_minimal_response() {
+    let mock_server = MockServer::start().await;
+
+    // Test minimal API response with only data field (no links or meta)
+    let response_body = json!({
+        "data": []
+    });
+
+    Mock::given(method("GET"))
+        .and(path("/api/harmony/changes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+
+    let client = RunbeamClient::new(mock_server.uri());
+
+    let result = client.list_changes("machine_token_abc").await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap();
+    assert_eq!(response.data.len(), 0);
+    assert!(response.links.is_none());
+    assert!(response.meta.is_none());
 }
 
 // OBSOLETE TEST - Removed duplicate test with wrong endpoint path (/api/changes/acknowledge instead of /api/harmony/changes/acknowledge)
@@ -444,7 +471,7 @@ async fn test_list_gateways_success() {
     let response = result.unwrap();
     assert_eq!(response.data.len(), 1);
     assert_eq!(response.data[0].code, "test-gateway-1");
-    assert_eq!(response.meta.total, 1);
+    assert_eq!(response.meta.as_ref().unwrap().total, 1);
 }
 
 // ============================================================================
@@ -766,7 +793,7 @@ async fn test_list_services_success() {
     assert_eq!(response.data.len(), 2);
     assert_eq!(response.data[0].code, "api-service");
     assert_eq!(response.data[1].code, "auth-service");
-    assert_eq!(response.meta.total, 2);
+    assert_eq!(response.meta.as_ref().unwrap().total, 2);
 }
 
 #[tokio::test]
@@ -1091,7 +1118,7 @@ async fn test_list_changes_for_gateway_with_data() {
     assert_eq!(response.data[1].id, "change-002");
     assert_eq!(response.data[1].status, Some("acknowledged".to_string()));
     assert!(response.data[1].acknowledged_at.is_some());
-    assert_eq!(response.meta.total, 2);
+    assert_eq!(response.meta.as_ref().unwrap().total, 2);
 }
 
 #[tokio::test]
