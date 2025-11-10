@@ -339,8 +339,15 @@ impl RunbeamClient {
         })?;
 
         serde_json::from_str(&response_text).map_err(|e| {
-            tracing::error!("Failed to parse changes response: {} - Response body: {}", e, response_text);
-            RunbeamError::Api(ApiError::Parse(format!("Failed to parse response: {} - Body: {}", e, response_text)))
+            tracing::error!(
+                "Failed to parse changes response: {} - Response body: {}",
+                e,
+                response_text
+            );
+            RunbeamError::Api(ApiError::Parse(format!(
+                "Failed to parse response: {} - Body: {}",
+                e, response_text
+            )))
         })
     }
 
@@ -366,7 +373,7 @@ impl RunbeamClient {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = RunbeamClient::new("http://runbeam.lndo.site");
     /// let change = client.get_change("machine_token_abc123", "change-123").await?;
-    /// 
+    ///
     /// if let Some(toml_config) = &change.data.toml_config {
     ///     println!("TOML config:\n{}", toml_config);
     /// }
@@ -889,25 +896,20 @@ impl RunbeamClient {
             }
         }
 
-        Err(last_err.unwrap_or_else(|| RunbeamError::Api(ApiError::Request(
-            "Base URL discovery failed for all candidates".to_string(),
-        ))))
+        Err(last_err.unwrap_or_else(|| {
+            RunbeamError::Api(ApiError::Request(
+                "Base URL discovery failed for all candidates".to_string(),
+            ))
+        }))
     }
 
     /// Discover and return a new client with the resolved base URL
-    pub async fn discover_base_url(
-        &self,
-        token: impl Into<String>,
-    ) -> Result<Self, RunbeamError> {
+    pub async fn discover_base_url(&self, token: impl Into<String>) -> Result<Self, RunbeamError> {
         let resp = self.get_base_url(token).await?;
-        let discovered = resp
-            .full_url
-            .or_else(|| Some(resp.base_url))
-            .unwrap();
+        let discovered = resp.full_url.unwrap_or(resp.base_url);
         tracing::info!("Discovered Runbeam API base URL: {}", discovered);
         Ok(Self::new(discovered))
     }
-
 
     /// Acknowledge receipt of multiple configuration changes
     ///
@@ -1174,7 +1176,7 @@ impl RunbeamClient {
     ///     toml_config
     /// ).await?;
     ///
-    /// println!("Configuration stored successfully: {}", response.status);
+    /// println!("Configuration stored: success={}, message={}", response.success, response.message);
     /// # Ok(())
     /// # }
     /// ```
@@ -1199,7 +1201,7 @@ impl RunbeamClient {
     ///     toml_config
     /// ).await?;
     ///
-    /// println!("Configuration updated successfully: {}", response.status);
+    /// println!("Configuration updated: model_id={}", response.data.model.id);
     /// # Ok(())
     /// # }
     /// ```
@@ -1455,6 +1457,8 @@ mod tests {
 
         let response = BaseUrlResponse {
             base_url: "https://api.runbeam.io".to_string(),
+            changes_path: Some("/api/changes".to_string()),
+            full_url: Some("https://api.runbeam.io/api/changes".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -1463,6 +1467,11 @@ mod tests {
         // Test deserialization
         let deserialized: BaseUrlResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.base_url, "https://api.runbeam.io");
+        assert_eq!(deserialized.changes_path, Some("/api/changes".to_string()));
+        assert_eq!(
+            deserialized.full_url,
+            Some("https://api.runbeam.io/api/changes".to_string())
+        );
     }
 
     #[test]
@@ -1525,14 +1534,29 @@ mod tests {
 
     #[test]
     fn test_store_config_response_serialization() {
-        let response = StoreConfigResponse { status: 200 };
+        use crate::runbeam_api::types::{StoreConfigModel, StoreConfigResponseData};
+
+        let response = StoreConfigResponse {
+            success: true,
+            message: "Configuration stored successfully".to_string(),
+            data: StoreConfigResponseData {
+                model: StoreConfigModel {
+                    id: "01k9npa4tatmwddk66xxpcr2r0".to_string(),
+                    model_type: "gateway".to_string(),
+                    action: "updated".to_string(),
+                },
+            },
+        };
 
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("\"status\":200"));
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("Configuration stored successfully"));
 
         // Test deserialization
         let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.status, 200);
+        assert_eq!(deserialized.success, true);
+        assert_eq!(deserialized.message, "Configuration stored successfully");
+        assert_eq!(deserialized.data.model.id, "01k9npa4tatmwddk66xxpcr2r0");
     }
 
     #[test]

@@ -26,7 +26,7 @@ pub struct PaginationMeta {
     pub from: Option<u32>,
     pub last_page: u32,
     #[serde(default)]
-    pub links: Option<Vec<serde_json::Value>>,  // Laravel pagination links array
+    pub links: Option<Vec<serde_json::Value>>, // Laravel pagination links array
     pub path: Option<String>,
     pub per_page: u32,
     pub to: Option<u32>,
@@ -333,13 +333,13 @@ pub struct GatewayConfiguration {
 }
 
 /// Change resource for configuration change tracking (API v1.0)
-/// 
+///
 /// This represents a configuration change that needs to be applied to a gateway.
 /// The API returns two different levels of detail:
-/// 
+///
 /// 1. ChangeMetadata (list view) - returned from `/api/harmony/changes` endpoints
 ///    Contains: id, status, type, gateway_id, created_at
-/// 
+///
 /// 2. ChangeResource (detail view) - returned from `/api/harmony/changes/{change}` endpoint  
 ///    Contains all metadata fields plus: pipeline_id, toml_config, metadata, timestamps, error info
 #[derive(Debug, Clone, Serialize, Deserialize)]
