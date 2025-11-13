@@ -1,0 +1,13 @@
+# Invalid config - management.network is required when management.enabled = true
+
+[proxy]
+id = "test-gateway"
+
+[management]
+enabled = true
+base_path = "admin"
+# Missing required field: network (required_if enabled == true)
+
+[network.default.tcp_config]
+bind_address = "0.0.0.0"
+bind_port = 8080

@@ -1,0 +1,12 @@
+# Invalid pipeline - networks array is empty (requires min_items = 1)
+
+[pipelines.http_api]
+networks = []
+endpoints = ["http_endpoint"]
+backends = ["api_backend"]
+
+[endpoints.http_endpoint]
+service = "http"
+
+[backends.api_backend]
+service = "http"

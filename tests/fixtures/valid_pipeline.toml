@@ -1,0 +1,31 @@
+# Valid Harmony Proxy pipeline configuration for testing
+
+[pipelines.http_api]
+id = "http-api-pipeline"
+description = "HTTP API pipeline"
+networks = ["default"]
+endpoints = ["http_endpoint"]
+backends = ["api_backend"]
+middleware = ["auth_middleware"]
+
+[endpoints.http_endpoint]
+id = "http-endpoint-1"
+service = "http"
+
+[endpoints.http_endpoint.options]
+path_prefix = "/api"
+
+[backends.api_backend]
+id = "backend-1"
+service = "http"
+
+[backends.api_backend.options]
+base_url = "http://localhost:3000"
+path_prefix = "/v1"
+
+[middleware.auth_middleware]
+id = "auth-1"
+type = "jwt_auth"
+
+[middleware.auth_middleware.options]
+issuer = "https://auth.example.com"

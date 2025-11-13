@@ -1,0 +1,8 @@
+# Invalid config - port should be integer, not string
+
+[proxy]
+id = "test-gateway"
+
+[network.default.tcp_config]
+bind_address = "0.0.0.0"
+bind_port = "8080"

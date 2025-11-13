@@ -1,0 +1,9 @@
+# Invalid config - jwks_cache_duration_hours exceeds max value of 168
+
+[proxy]
+id = "test-gateway"
+jwks_cache_duration_hours = 200
+
+[network.default.tcp_config]
+bind_address = "0.0.0.0"
+bind_port = 8080

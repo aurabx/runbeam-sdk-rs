@@ -1,0 +1,11 @@
+# Invalid config - network name contains uppercase (pattern requires lowercase)
+
+[proxy]
+id = "test-gateway"
+
+[network.INVALID_NAME]
+enable_wireguard = false
+
+[network.INVALID_NAME.tcp_config]
+bind_address = "0.0.0.0"
+bind_port = 8080

@@ -1,0 +1,11 @@
+# Invalid config - missing required proxy.id field
+
+[proxy]
+pipelines_path = "pipelines"
+
+[network.default]
+enable_wireguard = false
+
+[network.default.tcp_config]
+bind_address = "0.0.0.0"
+bind_port = 8080

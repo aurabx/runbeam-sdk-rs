@@ -99,8 +99,13 @@
 
 pub mod runbeam_api;
 pub mod storage;
+pub mod validation;
 
 // Re-export commonly used types and functions
+pub use validation::{
+    validate_config_toml, validate_pipeline_toml, validate_toml, ValidationError,
+};
+
 pub use runbeam_api::{
     client::RunbeamClient,
     jwt::{extract_bearer_token, validate_jwt_token, JwtClaims},

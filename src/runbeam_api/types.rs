@@ -15,6 +15,8 @@ pub enum RunbeamError {
     Storage(crate::storage::StorageError),
     /// Configuration error
     Config(String),
+    /// TOML validation failed
+    Validation(crate::validation::ValidationError),
 }
 
 impl fmt::Display for RunbeamError {
@@ -24,6 +26,7 @@ impl fmt::Display for RunbeamError {
             RunbeamError::Api(err) => write!(f, "API error: {}", err),
             RunbeamError::Storage(err) => write!(f, "Storage error: {}", err),
             RunbeamError::Config(msg) => write!(f, "Configuration error: {}", msg),
+            RunbeamError::Validation(err) => write!(f, "Validation error: {}", err),
         }
     }
 }
@@ -45,6 +48,12 @@ impl From<crate::storage::StorageError> for RunbeamError {
 impl From<jsonwebtoken::errors::Error> for RunbeamError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         RunbeamError::JwtValidation(err.to_string())
+    }
+}
+
+impl From<crate::validation::ValidationError> for RunbeamError {
+    fn from(err: crate::validation::ValidationError) -> Self {
+        RunbeamError::Validation(err)
     }
 }
 
