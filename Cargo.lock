@@ -813,7 +813,9 @@ dependencies = [
 
 [[package]]
 name = "harmony-dsl"
-version = "1.5.0"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "485166f54452ea64c6f3ac52d415b0270795e3189f020c420b49bb16f2e908d9"
 
 [[package]]
 name = "hashbrown"
@@ -1941,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "runbeam-sdk"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "age",
  "base64 0.22.1",

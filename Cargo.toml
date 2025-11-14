@@ -1,6 +1,6 @@
 [package]
 name = "runbeam-sdk"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Rust SDK for integrating with the Runbeam Cloud API, providing JWT validation, API client, and generic secure token storage"
 license = "Apache-2.0"
@@ -27,7 +27,7 @@ rand = "0.8"
 base64 = "0.22"
 dirs = "5.0"
 secrecy = "0.8"
-harmony-dsl = { path = "../harmony-dsl" }
+harmony-dsl = "1.6.0"
 toml = "0.8.22"
 regex = "1.11"
 thiserror = "1.0"
