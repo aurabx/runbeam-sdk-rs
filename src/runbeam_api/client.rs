@@ -1014,7 +1014,7 @@ impl RunbeamClient {
         change_id: impl Into<String>,
     ) -> Result<crate::runbeam_api::resources::ChangeAppliedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/harmony/changes/{}/applied", self.base_url, change_id);
+        let url = format!("{}/harmony/change/{}/applied", self.base_url, change_id);
 
         tracing::info!("Marking change {} as applied", change_id);
 
@@ -1089,7 +1089,7 @@ impl RunbeamClient {
         details: Option<Vec<String>>,
     ) -> Result<crate::runbeam_api::resources::ChangeFailedResponse, RunbeamError> {
         let change_id = change_id.into();
-        let url = format!("{}/harmony/changes/{}/failed", self.base_url, change_id);
+        let url = format!("{}/harmony/change/{}/failed", self.base_url, change_id);
 
         tracing::warn!("Marking change {} as failed: {}", change_id, error);
         if let Some(ref details) = details {
