@@ -3,6 +3,17 @@
 //! Comprehensive tests for API resource types serialization and deserialization.
 //! These tests verify that all resource structs correctly handle JSON conversion,
 //! optional fields, and API v1.2 schema compliance.
+//!
+//! # Status
+//!
+//! This file is currently SKIPPED (.skip extension) because it contains tests with outdated
+//! API expectations from an earlier SDK version. See individual tests for details.
+//!
+//! ## Updated for v1.7.0
+//!
+//! The `test_policy_with_rules` test (lines 310+) has been updated to use the v1.7.0
+//! policies format (rules as array of string IDs). This test will pass once the
+//! broader test file compatibility issues are resolved and the file is re-enabled.
 
 use runbeam_sdk::{
     AcknowledgeChangesRequest, Authentication, Backend, BaseUrlResponse, Change,
@@ -309,6 +320,7 @@ fn test_transform_with_instructions() {
 
 #[test]
 fn test_policy_with_rules() {
+    // v1.7.0 format: rules is an array of rule IDs (strings)
     let policy_json = json!({
         "type": "policy",
         "id": "policy-123",
@@ -317,7 +329,7 @@ fn test_policy_with_rules() {
         "enabled": 1,
         "team_id": "team-456",
         "gateway_id": "gateway-789",
-        "rules": {"max_requests": 100, "window": "1m"},
+        "rules": ["rate_limit_rule_1", "rate_limit_rule_2"],
         "created_at": "2024-01-01T00:00:00Z",
         "updated_at": "2024-01-01T00:00:00Z"
     });
@@ -328,7 +340,10 @@ fn test_policy_with_rules() {
     assert!(policy.rules.is_some());
 
     let rules = policy.rules.unwrap();
-    assert_eq!(rules["max_requests"], 100);
+    // v1.7.0: rules is a typed PolicyRules struct containing an array of rule IDs
+    assert_eq!(rules.rules().len(), 2);
+    assert_eq!(rules.rules()[0], "rate_limit_rule_1");
+    assert_eq!(rules.rules()[1], "rate_limit_rule_2");
 }
 
 // ============================================================================
@@ -449,10 +464,12 @@ fn test_paginated_response() {
     let response: PaginatedResponse<Gateway> = serde_json::from_value(response_json).unwrap();
 
     assert_eq!(response.data.len(), 2);
-    assert_eq!(response.meta.total, 250);
-    assert_eq!(response.meta.current_page, 1);
+    let meta = response.meta.unwrap();
+    assert_eq!(meta.total, 250);
+    assert_eq!(meta.current_page, 1);
+    let links = response.links.unwrap();
     assert_eq!(
-        response.links.next,
+        links.next,
         Some("https://api.example.com?page=2".to_string())
     );
 }
@@ -481,9 +498,10 @@ fn test_paginated_response_empty() {
     let response: PaginatedResponse<Gateway> = serde_json::from_value(response_json).unwrap();
 
     assert_eq!(response.data.len(), 0);
-    assert_eq!(response.meta.total, 0);
-    assert!(response.meta.from.is_none());
-    assert!(response.meta.to.is_none());
+    let meta = response.meta.unwrap();
+    assert_eq!(meta.total, 0);
+    assert!(meta.from.is_none());
+    assert!(meta.to.is_none());
 }
 
 #[test]
@@ -515,25 +533,17 @@ fn test_change_with_all_fields() {
         "type": "change",
         "gateway_id": "gateway-456",
         "status": "pending",
-        "operation": "create",
-        "resourceType": "endpoint",
-        "resource_id": "endpoint-789",
-        "payload": {
-            "name": "New Endpoint",
-            "path": "/api/v2/users"
-        },
-        "error": null,
-        "created_at": "2024-10-31T00:00:00Z",
-        "updated_at": "2024-10-31T00:00:00Z"
+        "pipeline_id": "pipeline-789",
+        "created_at": "2024-10-31T00:00:00Z"
     });
 
     let change: Change = serde_json::from_value(change_json).unwrap();
 
     assert_eq!(change.id, "change-123");
-    assert_eq!(change.status, "pending");
-    assert_eq!(change.operation, "create");
-    assert_eq!(change.change_resource_type, "endpoint");
-    assert!(change.error.is_none());
+    assert_eq!(change.status, Some("pending".to_string()));
+    assert_eq!(change.gateway_id, "gateway-456");
+    assert_eq!(change.pipeline_id, Some("pipeline-789".to_string()));
+    assert_eq!(change.resource_type, "change");
 }
 
 #[test]
@@ -543,56 +553,35 @@ fn test_change_with_error() {
         "type": "change",
         "gateway_id": "gateway-789",
         "status": "failed",
-        "operation": "update",
-        "resourceType": "backend",
-        "resource_id": "backend-001",
-        "payload": {"url": "https://invalid.example.com"},
-        "error": "Connection timeout after 30 seconds",
-        "created_at": "2024-10-31T00:00:00Z",
-        "updated_at": "2024-10-31T00:01:00Z"
+        "pipeline_id": "pipeline-001",
+        "error_message": "Connection timeout after 30 seconds",
+        "created_at": "2024-10-31T00:00:00Z"
     });
 
     let change: Change = serde_json::from_value(change_json).unwrap();
 
-    assert_eq!(change.status, "failed");
+    assert_eq!(change.status, Some("failed".to_string()));
     assert_eq!(
-        change.error,
+        change.error_message,
         Some("Connection timeout after 30 seconds".to_string())
     );
 }
 
 #[test]
-fn test_change_all_resource_types() {
-    let resource_types = vec![
-        "endpoint",
-        "backend",
-        "service",
-        "pipeline",
-        "middleware",
-        "transform",
-        "policy",
-        "network",
-        "gateway",
-    ];
+fn test_change_basic_structure() {
+    let change_json = json!({
+        "id": "change-001",
+        "type": "change",
+        "gateway_id": "gateway-123",
+        "status": "pending",
+        "created_at": "2024-10-31T00:00:00Z"
+    });
 
-    for resource_type in resource_types {
-        let change_json = json!({
-            "id": format!("change-{}", resource_type),
-            "type": "change",
-            "gateway_id": "gateway-123",
-            "status": "pending",
-            "operation": "create",
-            "resourceType": resource_type,
-            "resource_id": format!("{}-001", resource_type),
-            "payload": {},
-            "error": null,
-            "created_at": "2024-10-31T00:00:00Z",
-            "updated_at": "2024-10-31T00:00:00Z"
-        });
-
-        let change: Change = serde_json::from_value(change_json).unwrap();
-        assert_eq!(change.change_resource_type, resource_type);
-    }
+    let change: Change = serde_json::from_value(change_json).unwrap();
+    assert_eq!(change.id, "change-001");
+    assert_eq!(change.gateway_id, "gateway-123");
+    assert_eq!(change.status, Some("pending".to_string()));
+    assert_eq!(change.resource_type, "change");
 }
 
 // ============================================================================

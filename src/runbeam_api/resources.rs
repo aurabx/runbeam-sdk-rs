@@ -217,7 +217,62 @@ pub struct TransformOptions {
     pub instructions: Option<String>,
 }
 
+/// Array of rule IDs for a policy.
+///
+/// In harmony-dsl v1.7.0+, policies reference rules by ID using a simple array of strings.
+/// Each ID in this array corresponds to a top-level `[rules.*]` table definition.
+///
+/// # Example
+///
+/// ```json
+/// ["rate_limit_rule_1", "rate_limit_rule_2", "allow_internal"]
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PolicyRules(pub Vec<String>);
+
+impl PolicyRules {
+    /// Create a new PolicyRules from a vector of rule IDs
+    pub fn new(rules: Vec<String>) -> Self {
+        PolicyRules(rules)
+    }
+
+    /// Get a reference to the underlying rule IDs
+    pub fn rules(&self) -> &[String] {
+        &self.0
+    }
+
+    /// Convert into the underlying vector of rule IDs
+    pub fn into_inner(self) -> Vec<String> {
+        self.0
+    }
+}
+
 /// Policy resource
+///
+/// Represents a policy that contains references to rules.
+/// In v1.7.0+, rules are defined as top-level resources and referenced by ID.
+///
+/// # Example (v1.7.0 format)
+///
+/// ```json
+/// {
+///   "type": "policy",
+///   "id": "policy-123",
+///   "code": "rate-limit",
+///   "name": "Rate Limiting Policy",
+///   "enabled": 1,
+///   "team_id": "team-456",
+///   "gateway_id": "gateway-789",
+///   "rules": ["rate_limit_rule_1", "rate_limit_rule_2"],
+///   "created_at": "2024-01-01T00:00:00Z",
+///   "updated_at": "2024-01-01T00:00:00Z"
+/// }
+/// ```
+///
+/// # Breaking Change (v1.6.0 → v1.7.0)
+///
+/// In v1.7.0, the `rules` field format changed from nested objects to an array of rule ID strings.
+/// This aligns with the new flat/reusable policies and rules structure in harmony-dsl.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Policy {
     #[serde(rename = "type")]
@@ -229,8 +284,13 @@ pub struct Policy {
     pub enabled: u32,
     pub team_id: String,
     pub gateway_id: String,
+    /// Array of rule IDs referenced by this policy.
+    ///
+    /// In v1.7.0+, rules are defined as top-level `[rules.*]` tables and referenced by ID.
+    /// Each ID in this array should correspond to a rule defined at the top level.
+    /// Rules are represented as a typed array of string IDs for better type safety.
     #[serde(default)]
-    pub rules: Option<serde_json::Value>,
+    pub rules: Option<PolicyRules>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]

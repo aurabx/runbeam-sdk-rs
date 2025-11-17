@@ -113,7 +113,7 @@ pub use runbeam_api::{
         AcknowledgeChangesRequest, AcknowledgeChangesResponse, Authentication, Backend,
         BaseUrlResponse, Change, ChangeAppliedResponse, ChangeFailedRequest, ChangeFailedResponse,
         ChangeStatusResponse, Endpoint, Gateway, GatewayConfiguration, Middleware, Network,
-        PaginatedResponse, PaginationLinks, PaginationMeta, Pipeline, Policy, ResourceResponse,
+        PaginatedResponse, PaginationLinks, PaginationMeta, Pipeline, Policy, PolicyRules, ResourceResponse,
         Service, Transform,
     },
     token_storage::{

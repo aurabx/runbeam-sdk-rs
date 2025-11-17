@@ -1,6 +1,6 @@
 [package]
 name = "runbeam-sdk"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 description = "Rust SDK for integrating with the Runbeam Cloud API, providing JWT validation, API client, and generic secure token storage"
 license = "Apache-2.0"
@@ -12,6 +12,8 @@ categories = ["api-bindings", "authentication", "web-programming"]
 exclude = ["WARP.md", "docs/", ".idea/"]
 
 [dependencies]
+harmony-dsl = "1.7.0"
+
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
@@ -27,7 +29,6 @@ rand = "0.8"
 base64 = "0.22"
 dirs = "5.0"
 secrecy = "0.8"
-harmony-dsl = "1.6.0"
 toml = "0.8.22"
 regex = "1.11"
 thiserror = "1.0"
