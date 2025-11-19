@@ -38,8 +38,6 @@ pub enum StorageError {
     Io(std::io::Error),
     /// Configuration or serialization error
     Config(String),
-    /// Keyring error
-    Keyring(String),
     /// Path error
     Path(String),
     /// Encryption error
@@ -55,7 +53,6 @@ impl fmt::Display for StorageError {
         match self {
             StorageError::Io(e) => write!(f, "IO error: {}", e),
             StorageError::Config(msg) => write!(f, "Configuration error: {}", msg),
-            StorageError::Keyring(msg) => write!(f, "Keyring error: {}", msg),
             StorageError::Path(msg) => write!(f, "Path error: {}", msg),
             StorageError::Encryption(msg) => write!(f, "Encryption error: {}", msg),
             StorageError::KeyGeneration(msg) => write!(f, "Key generation error: {}", msg),
@@ -69,114 +66,6 @@ impl std::error::Error for StorageError {}
 impl From<std::io::Error> for StorageError {
     fn from(err: std::io::Error) -> Self {
         StorageError::Io(err)
-    }
-}
-
-impl From<keyring::Error> for StorageError {
-    fn from(err: keyring::Error) -> Self {
-        StorageError::Keyring(err.to_string())
-    }
-}
-
-/// Keyring-based storage for secure credentials
-///
-/// This implementation uses the OS-native credential store:
-/// - macOS: Keychain
-/// - Linux: Secret Service API (freedesktop.org)
-/// - Windows: Credential Manager
-pub struct KeyringStorage {
-    service_name: String,
-}
-
-impl KeyringStorage {
-    /// Create a new keyring storage with the specified service name
-    pub fn new(service_name: impl Into<String>) -> Self {
-        Self {
-            service_name: service_name.into(),
-        }
-    }
-
-    /// Get the keyring entry for a specific path
-    fn get_entry(&self, path: &str) -> Result<keyring::Entry, StorageError> {
-        // Use path as the username/account identifier
-        keyring::Entry::new(&self.service_name, path)
-            .map_err(|e| StorageError::Keyring(format!("Failed to create keyring entry: {}", e)))
-    }
-}
-
-impl StorageBackend for KeyringStorage {
-    fn write_file_str(
-        &self,
-        path: &str,
-        data: &[u8],
-    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
-        let path = path.to_string();
-        let data = data.to_vec();
-        let service_name = self.service_name.clone();
-
-        Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
-                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
-            })?;
-
-            let data_str = String::from_utf8(data)
-                .map_err(|e| StorageError::Config(format!("Invalid UTF-8 data: {}", e)))?;
-
-            entry.set_password(&data_str)?;
-            tracing::debug!(
-                "Stored data in keyring: service={}, path={}",
-                service_name,
-                path
-            );
-            Ok(())
-        })
-    }
-
-    fn read_file_str(
-        &self,
-        path: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, StorageError>> + Send + '_>> {
-        let path = path.to_string();
-        let service_name = self.service_name.clone();
-
-        Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
-                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
-            })?;
-
-            let password = entry.get_password()?;
-            Ok(password.into_bytes())
-        })
-    }
-
-    fn exists_str(&self, path: &str) -> bool {
-        if let Ok(entry) = self.get_entry(path) {
-            entry.get_password().is_ok()
-        } else {
-            false
-        }
-    }
-
-    fn remove_str(
-        &self,
-        path: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send + '_>> {
-        let path = path.to_string();
-        let service_name = self.service_name.clone();
-
-        Box::pin(async move {
-            let entry = keyring::Entry::new(&service_name, &path).map_err(|e| {
-                StorageError::Keyring(format!("Failed to create keyring entry: {}", e))
-            })?;
-
-            entry.delete_credential()?;
-            tracing::debug!(
-                "Removed data from keyring: service={}, path={}",
-                service_name,
-                path
-            );
-            Ok(())
-        })
     }
 }
 
@@ -690,44 +579,6 @@ mod tests {
         let storage = FilesystemStorage::new(temp_dir.path()).unwrap();
 
         assert!(!storage.exists_str("nonexistent.txt"));
-    }
-
-    #[tokio::test]
-    async fn test_keyring_storage_write_and_read() {
-        let storage = KeyringStorage::new("runbeam-sdk-test");
-
-        let test_data = b"{\"test\": \"data\"}";
-
-        // Write data
-        if let Err(e) = storage.write_file_str("test-key", test_data).await {
-            // Skip test if keyring is not available (e.g., in CI or headless environments)
-            eprintln!("Skipping keyring test - keyring unavailable: {}", e);
-            return;
-        }
-
-        // Check existence - also skip if keyring check fails
-        if !storage.exists_str("test-key") {
-            eprintln!("Skipping keyring test - keyring check failed after write");
-            // Try cleanup anyway
-            let _ = storage.remove_str("test-key").await;
-            return;
-        }
-
-        // Read data
-        match storage.read_file_str("test-key").await {
-            Ok(read_data) => {
-                assert_eq!(read_data, test_data);
-
-                // Cleanup
-                storage.remove_str("test-key").await.unwrap();
-                assert!(!storage.exists_str("test-key"));
-            }
-            Err(e) => {
-                eprintln!("Skipping keyring test - read failed: {}", e);
-                // Try cleanup anyway
-                let _ = storage.remove_str("test-key").await;
-            }
-        }
     }
 
     #[tokio::test]

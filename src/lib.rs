@@ -6,7 +6,7 @@
 //! - JWT token validation with RS256 and JWKS caching
 //! - Laravel Sanctum API token support
 //! - Runbeam Cloud API client for gateway authorization
-//! - Secure token storage via OS keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager)
+//! - Secure token storage via encrypted filesystem storage (age encryption)
 //! - Type definitions for API requests/responses and error handling
 //!
 //! # Authentication Methods
@@ -50,7 +50,7 @@
 //!     None
 //! ).await?;
 //!
-//! // Save machine token securely (automatic storage selection)
+//! // Save machine token securely (encrypted filesystem storage)
 //! let machine_token = MachineToken::new(
 //!     response.machine_token,
 //!     response.expires_at,
@@ -84,7 +84,7 @@
 //!     None
 //! ).await?;
 //!
-//! // Save machine token securely (automatic storage selection)
+//! // Save machine token securely (encrypted filesystem storage)
 //! let machine_token = MachineToken::new(
 //!     response.machine_token,
 //!     response.expires_at,

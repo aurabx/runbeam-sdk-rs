@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-11-19
+
+### Breaking Changes
+
+- **Removed keyring dependency**: The SDK no longer uses OS keyring/credential stores (macOS Keychain, Linux Secret Service, Windows Credential Manager) for token storage. All tokens are now stored using encrypted filesystem storage at `~/.runbeam/<instance_id>/auth.json`.
+  - **Impact**: Existing tokens stored in OS keyring will NOT be automatically migrated
+  - **Migration**: Users must re-authenticate to generate new tokens in encrypted filesystem storage
+  - **Benefits**: 
+    - No system dependencies (dbus, libdbus-sys, openssl, openssl-sys) required
+    - Eliminates build-time dependencies on system libraries
+    - Simplified cross-compilation and containerized deployments
+    - Better support for headless systems, CI/CD pipelines, Docker, Kubernetes, and cloud VMs
+    - Smaller binary size and faster compilation
+    - Pure Rust implementation with no platform-specific FFI
+  - **Note**: Since machine tokens expire after 30 days anyway, losing keyring-stored tokens has minimal impact
+
+### Changed
+
+- Token storage now uses only `EncryptedFilesystemStorage` with age encryption
+- Encryption keys sourced from `RUNBEAM_ENCRYPTION_KEY` environment variable or auto-generated at `~/.runbeam/<instance_id>/encryption.key`
+- Removed `RUNBEAM_DISABLE_KEYRING` environment variable (no longer needed)
+- All storage functions (`save_token`, `load_token`, `clear_token`) now directly use encrypted filesystem storage
+
+### Removed
+
+- Removed `keyring` crate dependency (version 3.6.3)
+- Removed `KeyringStorage` implementation from storage module
+- Removed `StorageError::Keyring` error variant
+- Removed automatic storage backend selection (keyring fallback logic)
+
 ## [0.6.2] - 2025-11-16
 
 ### Added
@@ -186,6 +216,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.7.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.2...v0.7.0
+[0.6.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.3.1...v0.3.2

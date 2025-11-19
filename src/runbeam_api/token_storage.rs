@@ -1,74 +1,6 @@
-use crate::storage::{EncryptedFilesystemStorage, KeyringStorage, StorageBackend, StorageError};
+use crate::storage::{EncryptedFilesystemStorage, StorageBackend, StorageError};
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-
-/// Storage backend types
-enum StorageBackendType {
-    Keyring(KeyringStorage),
-    Encrypted(EncryptedFilesystemStorage),
-}
-
-/// Get or initialize the storage backend
-///
-/// This function attempts to use KeyringStorage first, falling back to
-/// EncryptedFilesystemStorage if keyring is unavailable.
-///
-/// # Arguments
-///
-/// * `instance_id` - Unique identifier for this application instance
-/// * `token_path` - Storage path for existence check (e.g., "runbeam/auth.json")
-async fn get_storage_backend(
-    instance_id: &str,
-    token_path: &str,
-) -> Result<StorageBackendType, StorageError> {
-    // Check if keyring is disabled (e.g., in tests)
-    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
-
-    // Try keyring first (unless disabled)
-    let keyring_works = if keyring_disabled {
-        tracing::debug!("Keyring disabled via RUNBEAM_DISABLE_KEYRING environment variable");
-        false
-    } else {
-        let keyring = KeyringStorage::new("runbeam");
-        let path = token_path.to_string();
-
-        // Test if keyring is available by attempting to check if token path exists
-        let test_result = tokio::task::spawn_blocking(move || keyring.exists_str(&path)).await;
-
-        match test_result {
-            Ok(_) => {
-                // Keyring operations succeeded
-                tracing::debug!(
-                    "Keyring storage is available, using OS keychain for secure token storage"
-                );
-                true
-            }
-            Err(e) => {
-                tracing::debug!(
-                    "Keyring storage is unavailable ({}), falling back to encrypted filesystem storage",
-                    e
-                );
-                false
-            }
-        }
-    };
-
-    if keyring_works {
-        Ok(StorageBackendType::Keyring(KeyringStorage::new("runbeam")))
-    } else {
-        tracing::debug!(
-            "Using encrypted filesystem storage at ~/.runbeam/{} (RUNBEAM_ENCRYPTION_KEY environment variable can override key)",
-            instance_id
-        );
-        let encrypted = EncryptedFilesystemStorage::new_with_instance(instance_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to initialize encrypted storage: {}", e);
-                e
-            })?;
-        Ok(StorageBackendType::Encrypted(encrypted))
-    }
-}
 
 /// Machine-scoped token for Runbeam Cloud API authentication
 ///
@@ -138,11 +70,12 @@ impl MachineToken {
 // Generic Token Storage Functions
 // ============================================================================
 
-/// Save any token using automatic secure storage selection (generic)
+/// Save any token using encrypted filesystem storage
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
+/// Tokens are stored encrypted at `~/.runbeam/<instance_id>/<token_type>.json`
+/// using age encryption. The encryption key is sourced from:
+/// 1. **RUNBEAM_ENCRYPTION_KEY** environment variable (production/containers)
+/// 2. Auto-generated at `~/.runbeam/<instance_id>/encryption.key` (local development)
 ///
 /// # Type Parameters
 ///
@@ -202,7 +135,13 @@ where
         token_path
     );
 
-    let backend = get_storage_backend(instance_id, &token_path).await?;
+    // Initialize encrypted storage
+    let storage = EncryptedFilesystemStorage::new_with_instance(instance_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to initialize encrypted storage: {}", e);
+            e
+        })?;
 
     // Serialize token to JSON
     let json = serde_json::to_vec_pretty(&token).map_err(|e| {
@@ -210,16 +149,11 @@ where
         StorageError::Config(format!("JSON serialization failed: {}", e))
     })?;
 
-    // Write to storage
-    match backend {
-        StorageBackendType::Keyring(storage) => storage.write_file_str(&token_path, &json).await?,
-        StorageBackendType::Encrypted(storage) => {
-            storage.write_file_str(&token_path, &json).await?
-        }
-    }
+    // Write to encrypted storage
+    storage.write_file_str(&token_path, &json).await?;
 
     tracing::info!(
-        "Token saved successfully: type={}, instance={}",
+        "Token saved successfully to encrypted storage: type={}, instance={}",
         token_type,
         instance_id
     );
@@ -227,14 +161,10 @@ where
     Ok(())
 }
 
-/// Load any token using automatic secure storage selection (generic)
+/// Load any token from encrypted filesystem storage
 ///
-/// This function checks multiple storage backends to find the token:
-/// 1. **Keyring** (OS keychain) - checked first if available
-/// 2. **Encrypted filesystem** - checked as fallback
-///
-/// This ensures tokens can be loaded regardless of which backend was used during save,
-/// providing resilience against keyring availability changes between operations.
+/// Tokens are loaded from `~/.runbeam/<instance_id>/<token_type>.json`
+/// and automatically decrypted using the age encryption key.
 ///
 /// # Type Parameters
 ///
@@ -248,7 +178,7 @@ where
 /// # Returns
 ///
 /// Returns `Ok(Some(token))` if a token was found and loaded successfully,
-/// `Ok(None)` if no token file exists in any backend, or `Err(StorageError)` if loading failed.
+/// `Ok(None)` if no token file exists, or `Err(StorageError)` if loading failed.
 ///
 /// # Examples
 ///
@@ -276,85 +206,40 @@ where
         token_path
     );
 
-    // Check if keyring is disabled
-    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
-
-    // Try keyring first (unless disabled)
-    if !keyring_disabled {
-        tracing::debug!("Attempting to load token from keyring storage");
-        let keyring = KeyringStorage::new("runbeam");
-
-        if keyring.exists_str(&token_path) {
-            tracing::debug!("Token found in keyring, loading...");
-            match keyring.read_file_str(&token_path).await {
-                Ok(json) => {
-                    // Deserialize token
-                    let token: T = serde_json::from_slice(&json).map_err(|e| {
-                        tracing::error!("Failed to deserialize token from keyring: {}", e);
-                        StorageError::Config(format!("JSON deserialization failed: {}", e))
-                    })?;
-
-                    tracing::debug!(
-                        "Token loaded successfully from keyring: type={}",
-                        token_type
-                    );
-                    return Ok(Some(token));
-                }
-                Err(e) => {
-                    tracing::warn!("Token exists in keyring but failed to read: {}", e);
-                    // Fall through to try encrypted filesystem
-                }
-            }
-        } else {
-            tracing::debug!("Token not found in keyring, trying encrypted filesystem");
-        }
-    } else {
-        tracing::debug!("Keyring disabled, skipping keyring check");
-    }
-
-    // Try encrypted filesystem as fallback
-    tracing::debug!("Attempting to load token from encrypted filesystem storage");
-    let encrypted = EncryptedFilesystemStorage::new_with_instance(instance_id)
+    // Initialize encrypted storage
+    let storage = EncryptedFilesystemStorage::new_with_instance(instance_id)
         .await
         .map_err(|e| {
             tracing::debug!("Failed to initialize encrypted storage: {}", e);
             e
         })?;
 
-    if encrypted.exists_str(&token_path) {
-        tracing::debug!("Token found in encrypted filesystem, loading...");
-        let json = encrypted.read_file_str(&token_path).await?;
-
-        // Deserialize token
-        let token: T = serde_json::from_slice(&json).map_err(|e| {
-            tracing::error!(
-                "Failed to deserialize token from encrypted filesystem: {}",
-                e
-            );
-            StorageError::Config(format!("JSON deserialization failed: {}", e))
-        })?;
-
-        tracing::debug!(
-            "Token loaded successfully from encrypted filesystem: type={}",
-            token_type
-        );
-        return Ok(Some(token));
+    // Check if token exists
+    if !storage.exists_str(&token_path) {
+        tracing::debug!("No token file found: type={}", token_type);
+        return Ok(None);
     }
 
+    // Read and decrypt token
+    tracing::debug!("Token found in encrypted filesystem, loading...");
+    let json = storage.read_file_str(&token_path).await?;
+
+    // Deserialize token
+    let token: T = serde_json::from_slice(&json).map_err(|e| {
+        tracing::error!("Failed to deserialize token: {}", e);
+        StorageError::Config(format!("JSON deserialization failed: {}", e))
+    })?;
+
     tracing::debug!(
-        "No token file found in any storage backend: type={}",
+        "Token loaded successfully from encrypted filesystem: type={}",
         token_type
     );
-    Ok(None)
+    Ok(Some(token))
 }
 
-/// Clear any token from all available storage backends
+/// Clear any token from encrypted filesystem storage
 ///
-/// This function clears tokens from both storage backends to ensure complete removal:
-/// 1. **Keyring** (OS keychain) - if available
-/// 2. **Encrypted filesystem** - always checked
-///
-/// This ensures tokens are fully removed regardless of which backend they were stored in.
+/// Removes the token file from `~/.runbeam/<instance_id>/<token_type>.json`.
 ///
 /// # Arguments
 ///
@@ -389,54 +274,28 @@ pub async fn clear_token(instance_id: &str, token_type: &str) -> Result<(), Stor
         token_path
     );
 
-    let mut cleared_any = false;
+    // Initialize encrypted storage
+    let storage = EncryptedFilesystemStorage::new_with_instance(instance_id)
+        .await
+        .map_err(|e| {
+            tracing::debug!("Failed to initialize encrypted storage: {}", e);
+            e
+        })?;
 
-    // Check if keyring is disabled
-    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
-
-    // Try to clear from keyring first (unless disabled)
-    if !keyring_disabled {
-        let keyring = KeyringStorage::new("runbeam");
-        if keyring.exists_str(&token_path) {
-            tracing::debug!("Clearing token from keyring storage");
-            match keyring.remove_str(&token_path).await {
-                Ok(_) => {
-                    tracing::debug!("Token cleared from keyring");
-                    cleared_any = true;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to clear token from keyring: {}", e);
-                    // Continue to try encrypted filesystem
-                }
-            }
-        }
+    // Check if token exists
+    if !storage.exists_str(&token_path) {
+        tracing::debug!("No token file to clear: type={}", token_type);
+        return Ok(());
     }
 
-    // Try to clear from encrypted filesystem
-    if let Ok(encrypted) = EncryptedFilesystemStorage::new_with_instance(instance_id).await {
-        if encrypted.exists_str(&token_path) {
-            tracing::debug!("Clearing token from encrypted filesystem storage");
-            match encrypted.remove_str(&token_path).await {
-                Ok(_) => {
-                    tracing::debug!("Token cleared from encrypted filesystem");
-                    cleared_any = true;
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to clear token from encrypted filesystem: {}", e);
-                }
-            }
-        }
-    }
+    // Remove token
+    tracing::debug!("Clearing token from encrypted filesystem storage");
+    storage.remove_str(&token_path).await.map_err(|e| {
+        tracing::error!("Failed to clear token: {}", e);
+        e
+    })?;
 
-    if cleared_any {
-        tracing::info!("Token cleared successfully: type={}", token_type);
-    } else {
-        tracing::debug!(
-            "No token file to clear in any storage backend: type={}",
-            token_type
-        );
-    }
-
+    tracing::info!("Token cleared successfully: type={}", token_type);
     Ok(())
 }
 
@@ -446,9 +305,7 @@ pub async fn clear_token(instance_id: &str, token_type: &str) -> Result<(), Stor
 
 /// Save a machine token with an explicit encryption key
 ///
-/// This function uses the provided encryption key for token storage instead of
-/// relying on environment variables or auto-generation. It still prefers OS keyring
-/// when available, falling back to encrypted filesystem with the provided key.
+/// This function uses the provided encryption key for token storage.
 ///
 /// # Arguments
 ///
@@ -472,43 +329,10 @@ pub async fn save_token_with_key(
         instance_id
     );
 
-    // Check if keyring is disabled
-    let keyring_disabled = std::env::var("RUNBEAM_DISABLE_KEYRING").is_ok();
-
-    // Try keyring first (unless disabled)
-    let backend = if keyring_disabled {
-        tracing::debug!("Keyring disabled via RUNBEAM_DISABLE_KEYRING environment variable");
-        None
-    } else {
-        let keyring = KeyringStorage::new("runbeam");
-        let path = token_path.to_string();
-        let test_result = tokio::task::spawn_blocking(move || keyring.exists_str(&path)).await;
-
-        match test_result {
-            Ok(_) => {
-                tracing::debug!("Using OS keyring for secure token storage");
-                Some(StorageBackendType::Keyring(KeyringStorage::new("runbeam")))
-            }
-            Err(e) => {
-                tracing::debug!(
-                    "Keyring unavailable ({}), using encrypted filesystem with provided key",
-                    e
-                );
-                None
-            }
-        }
-    };
-
-    let backend = match backend {
-        Some(b) => b,
-        None => {
-            // Use encrypted filesystem with the provided key
-            let encrypted =
-                EncryptedFilesystemStorage::new_with_instance_and_key(instance_id, encryption_key)
-                    .await?;
-            StorageBackendType::Encrypted(encrypted)
-        }
-    };
+    // Use encrypted filesystem with the provided key
+    let storage =
+        EncryptedFilesystemStorage::new_with_instance_and_key(instance_id, encryption_key)
+            .await?;
 
     // Serialize token to JSON
     let json = serde_json::to_vec_pretty(&token).map_err(|e| {
@@ -516,11 +340,8 @@ pub async fn save_token_with_key(
         StorageError::Config(format!("JSON serialization failed: {}", e))
     })?;
 
-    // Write to storage
-    match backend {
-        StorageBackendType::Keyring(storage) => storage.write_file_str(token_path, &json).await?,
-        StorageBackendType::Encrypted(storage) => storage.write_file_str(token_path, &json).await?,
-    }
+    // Write to encrypted storage
+    storage.write_file_str(token_path, &json).await?;
 
     tracing::info!(
         "Machine token saved successfully with explicit key: gateway_id={}, expires_at={}",
@@ -531,19 +352,15 @@ pub async fn save_token_with_key(
     Ok(())
 }
 
-/// Save a machine token using automatic secure storage selection
+/// Save a machine token using encrypted filesystem storage
 ///
 /// **Backwards-compatible wrapper** for `save_token(instance_id, "auth", token)`.
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
-///
-/// Tokens are stored at `runbeam/auth.json`.
+/// Tokens are stored encrypted at `~/.runbeam/<instance_id>/auth.json`.
 ///
 /// # Encryption
 ///
-/// When using encrypted filesystem storage, the encryption key is sourced from:
+/// The encryption key is sourced from:
 /// 1. `RUNBEAM_ENCRYPTION_KEY` environment variable (base64-encoded)
 /// 2. Auto-generated key stored at `~/.runbeam/<instance_id>/encryption.key` (0600 permissions)
 ///
@@ -563,15 +380,11 @@ pub async fn save_machine_token(
     save_token(instance_id, "auth", token).await
 }
 
-/// Load a machine token using automatic secure storage selection
+/// Load a machine token from encrypted filesystem storage
 ///
 /// **Backwards-compatible wrapper** for `load_token(instance_id, "auth")`.
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
-///
-/// Attempts to load the token from `runbeam/auth.json`. Returns `None` if the
+/// Attempts to load the token from `~/.runbeam/<instance_id>/auth.json`. Returns `None` if the
 /// file doesn't exist.
 ///
 /// # Arguments
@@ -586,15 +399,11 @@ pub async fn load_machine_token(instance_id: &str) -> Result<Option<MachineToken
     load_token(instance_id, "auth").await
 }
 
-/// Clear the machine token using automatic secure storage selection
+/// Clear the machine token from encrypted filesystem storage
 ///
 /// **Backwards-compatible wrapper** for `clear_token(instance_id, "auth")`.
 ///
-/// This function automatically selects the most secure available storage:
-/// 1. **Keyring** (OS keychain) if available
-/// 2. **Encrypted filesystem** if keyring is unavailable
-///
-/// Removes the token file at `runbeam/auth.json` if it exists.
+/// Removes the token file at `~/.runbeam/<instance_id>/auth.json` if it exists.
 ///
 /// # Arguments
 ///
@@ -624,16 +433,12 @@ mod tests {
             .encode(identity.to_string().expose_secret().as_bytes());
         env::set_var("RUNBEAM_ENCRYPTION_KEY", &key_base64);
 
-        // Disable keyring in tests to force encrypted filesystem storage
-        // This ensures consistent test behavior across platforms
-        env::set_var("RUNBEAM_DISABLE_KEYRING", "1");
 
         // Return a guard that will clean up on drop
         struct Guard;
         impl Drop for Guard {
             fn drop(&mut self) {
                 std::env::remove_var("RUNBEAM_ENCRYPTION_KEY");
-                std::env::remove_var("RUNBEAM_DISABLE_KEYRING");
             }
         }
         Guard
