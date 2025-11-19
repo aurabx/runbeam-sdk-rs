@@ -14,11 +14,11 @@ fn load_fixture(filename: &str) -> String {
 fn test_valid_config_passes() {
     let content = load_fixture("valid_config.toml");
     let result = validate_config_toml(&content);
-    
+
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    
+
     assert!(result.is_ok(), "Valid config should pass validation");
 }
 
@@ -26,12 +26,15 @@ fn test_valid_config_passes() {
 fn test_missing_required_field_detected() {
     let content = load_fixture("invalid_missing_required.toml");
     let result = validate_config_toml(&content);
-    
-    assert!(result.is_err(), "Config with missing required field should fail");
-    
+
+    assert!(
+        result.is_err(),
+        "Config with missing required field should fail"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     // Verify the error mentions the missing field
     assert!(
         error_message.contains("proxy.id") || error_message.contains("Missing required field"),
@@ -44,15 +47,16 @@ fn test_missing_required_field_detected() {
 fn test_wrong_type_detected() {
     let content = load_fixture("invalid_wrong_type.toml");
     let result = validate_config_toml(&content);
-    
+
     assert!(result.is_err(), "Config with wrong field type should fail");
-    
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     // Verify the error mentions type mismatch
     assert!(
-        error_message.contains("bind_port") && (error_message.contains("type") || error_message.contains("integer")),
+        error_message.contains("bind_port")
+            && (error_message.contains("type") || error_message.contains("integer")),
         "Error should mention type issue with bind_port field, got: {}",
         error_message
     );
@@ -62,12 +66,15 @@ fn test_wrong_type_detected() {
 fn test_out_of_range_detected() {
     let content = load_fixture("invalid_out_of_range.toml");
     let result = validate_config_toml(&content);
-    
-    assert!(result.is_err(), "Config with out-of-range value should fail");
-    
+
+    assert!(
+        result.is_err(),
+        "Config with out-of-range value should fail"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     // Verify the error mentions range violation
     assert!(
         error_message.contains("range") || error_message.contains("200"),
@@ -80,12 +87,12 @@ fn test_out_of_range_detected() {
 fn test_pattern_mismatch_detected() {
     let content = load_fixture("invalid_pattern_mismatch.toml");
     let result = validate_config_toml(&content);
-    
+
     assert!(result.is_err(), "Config with pattern mismatch should fail");
-    
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     // Verify the error mentions pattern mismatch
     assert!(
         error_message.contains("pattern") || error_message.contains("INVALID_NAME"),
@@ -98,12 +105,15 @@ fn test_pattern_mismatch_detected() {
 fn test_conditional_requirement_detected() {
     let content = load_fixture("invalid_conditional_requirement.toml");
     let result = validate_config_toml(&content);
-    
-    assert!(result.is_err(), "Config with missing conditional requirement should fail");
-    
+
+    assert!(
+        result.is_err(),
+        "Config with missing conditional requirement should fail"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     // Verify the error mentions the conditionally required field
     assert!(
         error_message.contains("management.network") || error_message.contains("required"),
@@ -135,12 +145,15 @@ interface = "wg1"
 bind_address = "10.0.0.1"
 bind_port = 9090
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Config with multiple pattern-matched networks should be valid");
+    assert!(
+        result.is_ok(),
+        "Config with multiple pattern-matched networks should be valid"
+    );
 }
 
 #[test]
@@ -150,12 +163,15 @@ fn test_minimal_valid_config() {
 [proxy]
 id = "minimal-gateway"
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Minimal config with only required fields should be valid");
+    assert!(
+        result.is_ok(),
+        "Minimal config with only required fields should be valid"
+    );
 }
 
 #[test]
@@ -165,15 +181,19 @@ fn test_error_provides_helpful_context() {
 [proxy]
 id = 123
 "#;
-    
+
     let result = validate_config_toml(content);
     assert!(result.is_err());
-    
+
     let error = result.unwrap_err();
-    
+
     // Check that the error is a specific variant with field path
     match error {
-        ValidationError::InvalidType { field_path, expected, found } => {
+        ValidationError::InvalidType {
+            field_path,
+            expected,
+            found,
+        } => {
             assert!(field_path.contains("proxy.id"));
             assert_eq!(expected, "string");
             assert_eq!(found, "integer");
@@ -192,16 +212,20 @@ jwks_cache_duration_hours = 999
 [network.INVALID]
 enable_wireguard = "not_a_boolean"
 "#;
-    
+
     let result = validate_config_toml(content);
     assert!(result.is_err());
-    
+
     let error = result.unwrap_err();
-    
+
     // Should report multiple errors
     match error {
         ValidationError::Multiple(errors) => {
-            assert!(errors.len() >= 2, "Should report multiple errors, got: {}", errors.len());
+            assert!(
+                errors.len() >= 2,
+                "Should report multiple errors, got: {}",
+                errors.len()
+            );
         }
         _ => {
             // Single error is also acceptable depending on validation order
@@ -224,10 +248,13 @@ enable_wireguard = false
 bind_address = 12345
 bind_port = 8080
 "#;
-    
+
     let result = validate_config_toml(content);
-    assert!(result.is_err(), "Invalid nested table field should be detected");
-    
+    assert!(
+        result.is_err(),
+        "Invalid nested table field should be detected"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
     assert!(
@@ -250,12 +277,15 @@ max_xml_depth = 50
 max_multipart_files = 5
 max_form_fields = 500
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Valid content_limits should pass validation");
+    assert!(
+        result.is_ok(),
+        "Valid content_limits should pass validation"
+    );
 }
 
 #[test]
@@ -270,12 +300,15 @@ enabled = true
 cloud_api_base_url = "https://custom.runbeam.cloud"
 poll_interval_secs = 60
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Valid runbeam config should pass validation");
+    assert!(
+        result.is_ok(),
+        "Valid runbeam config should pass validation"
+    );
 }
 
 #[test]
@@ -298,12 +331,15 @@ interface = "wg1"
 bind_address = "127.0.0.1"
 bind_port = 9090
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Valid management config should pass validation");
+    assert!(
+        result.is_ok(),
+        "Valid management config should pass validation"
+    );
 }
 
 #[test]
@@ -317,10 +353,13 @@ id = "test-gateway"
 enabled = false
 base_path = "admin"
 "#;
-    
+
     let result = validate_config_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "Management network not required when disabled");
+    assert!(
+        result.is_ok(),
+        "Management network not required when disabled"
+    );
 }

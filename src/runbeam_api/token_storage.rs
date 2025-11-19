@@ -331,8 +331,7 @@ pub async fn save_token_with_key(
 
     // Use encrypted filesystem with the provided key
     let storage =
-        EncryptedFilesystemStorage::new_with_instance_and_key(instance_id, encryption_key)
-            .await?;
+        EncryptedFilesystemStorage::new_with_instance_and_key(instance_id, encryption_key).await?;
 
     // Serialize token to JSON
     let json = serde_json::to_vec_pretty(&token).map_err(|e| {
@@ -432,7 +431,6 @@ mod tests {
         let key_base64 = base64::engine::general_purpose::STANDARD
             .encode(identity.to_string().expose_secret().as_bytes());
         env::set_var("RUNBEAM_ENCRYPTION_KEY", &key_base64);
-
 
         // Return a guard that will clean up on drop
         struct Guard;

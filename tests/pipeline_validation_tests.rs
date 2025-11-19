@@ -1,6 +1,6 @@
 //! Integration tests for pipeline.toml validation against PIPELINE_SCHEMA
 
-use runbeam_sdk::{validate_pipeline_toml};
+use runbeam_sdk::validate_pipeline_toml;
 
 const FIXTURES_DIR: &str = "tests/fixtures";
 
@@ -14,11 +14,11 @@ fn load_fixture(filename: &str) -> String {
 fn test_valid_pipeline_passes() {
     let content = load_fixture("valid_pipeline.toml");
     let result = validate_pipeline_toml(&content);
-    
+
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    
+
     assert!(result.is_ok(), "Valid pipeline should pass validation");
 }
 
@@ -26,12 +26,15 @@ fn test_valid_pipeline_passes() {
 fn test_invalid_array_length() {
     let content = load_fixture("invalid_array_length.toml");
     let result = validate_pipeline_toml(&content);
-    
-    assert!(result.is_err(), "Pipeline with empty networks array should fail");
-    
+
+    assert!(
+        result.is_err(),
+        "Pipeline with empty networks array should fail"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
-    
+
     assert!(
         error_message.contains("networks") || error_message.contains("array"),
         "Error should mention networks array issue, got: {}",
@@ -53,7 +56,7 @@ service = "http"
 [backends.be1]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -86,7 +89,7 @@ service = "http"
 [backends.dicom_be]
 service = "dicom"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -115,7 +118,7 @@ type = "jolt_transform"
 [backends.be]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -140,7 +143,7 @@ path_prefix = "/api/v1"
 [backends.http_be]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -166,7 +169,7 @@ service = "http"
 base_url = "http://localhost:3000"
 path_prefix = "/v1"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -185,10 +188,13 @@ endpoints = ["ep"]
 [endpoints.ep]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
-    assert!(result.is_err(), "Pipeline missing required field should fail");
-    
+    assert!(
+        result.is_err(),
+        "Pipeline missing required field should fail"
+    );
+
     let error = result.unwrap_err();
     let error_message = error.to_string();
     assert!(
@@ -211,7 +217,7 @@ backends = ["be"]
 [backends.be]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     assert!(result.is_err(), "Endpoint missing service should fail");
 }
@@ -230,7 +236,7 @@ service = "http"
 [backends.be]
 # Missing required field: service
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     assert!(result.is_err(), "Backend missing service should fail");
 }
@@ -254,7 +260,7 @@ service = "http"
 [middleware.custom_middleware]
 type = "transform"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -280,12 +286,15 @@ port = 11112
 [backends.dicom_be]
 service = "dicom"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
     }
-    assert!(result.is_ok(), "DICOM endpoint with options should be valid");
+    assert!(
+        result.is_ok(),
+        "DICOM endpoint with options should be valid"
+    );
 }
 
 #[test]
@@ -308,7 +317,7 @@ host = "pacs.example.com"
 port = 11112
 local_aet = "LOCAL_SCU"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -338,7 +347,7 @@ audience = "api.example.com"
 [backends.be]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -374,7 +383,7 @@ service = "http"
 [middleware.mw1]
 type = "transform"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);
@@ -397,7 +406,7 @@ service = "http"
 [backends.be]
 service = "http"
 "#;
-    
+
     let result = validate_pipeline_toml(content);
     if let Err(e) = &result {
         eprintln!("Unexpected validation error: {}", e);

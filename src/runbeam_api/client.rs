@@ -1201,7 +1201,7 @@ impl RunbeamClient {
     ///     toml_config
     /// ).await?;
     ///
-    /// println!("Configuration updated: model_id={}", response.data.model.id);
+    /// println!("Configuration updated: model_id={}", response.data.id);
     /// # Ok(())
     /// # }
     /// ```
@@ -1265,16 +1265,23 @@ impl RunbeamClient {
         }
 
         // Parse successful response (UpdateSuccessResource format)
-        let response_data = response.json::<StoreConfigResponse>().await.map_err(|e| {
-            tracing::error!("Failed to parse store config response: {}", e);
-            ApiError::Parse(format!("Failed to parse response: {}", e))
+        let body_text = response.text().await.map_err(|e| {
+            tracing::error!("Failed to read response body: {}", e);
+            ApiError::Network(format!("Failed to read response body: {}", e))
         })?;
+
+        let response_data =
+            serde_json::from_str::<StoreConfigResponse>(&body_text).map_err(|e| {
+                tracing::error!("Failed to parse store config response: {}", e);
+                tracing::error!("Response body was: {}", body_text);
+                ApiError::Parse(format!("Failed to parse response: {}", e))
+            })?;
 
         tracing::info!(
             "Configuration stored successfully: type={}, id={:?}, action={}",
             config_type,
             id,
-            response_data.data.model.action
+            response_data.data.action
         );
 
         Ok(response_data)
@@ -1534,17 +1541,15 @@ mod tests {
 
     #[test]
     fn test_store_config_response_serialization() {
-        use crate::runbeam_api::types::{StoreConfigModel, StoreConfigResponseData};
+        use crate::runbeam_api::types::StoreConfigModel;
 
         let response = StoreConfigResponse {
             success: true,
             message: "Configuration stored successfully".to_string(),
-            data: StoreConfigResponseData {
-                model: StoreConfigModel {
-                    id: "01k9npa4tatmwddk66xxpcr2r0".to_string(),
-                    model_type: "gateway".to_string(),
-                    action: "updated".to_string(),
-                },
+            data: StoreConfigModel {
+                id: "01k9npa4tatmwddk66xxpcr2r0".to_string(),
+                model_type: "gateway".to_string(),
+                action: "updated".to_string(),
             },
         };
 
@@ -1556,7 +1561,7 @@ mod tests {
         let deserialized: StoreConfigResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.success, true);
         assert_eq!(deserialized.message, "Configuration stored successfully");
-        assert_eq!(deserialized.data.model.id, "01k9npa4tatmwddk66xxpcr2r0");
+        assert_eq!(deserialized.data.id, "01k9npa4tatmwddk66xxpcr2r0");
     }
 
     #[test]

@@ -196,9 +196,9 @@ impl Schema {
         }
 
         // Try pattern matches
-        self.tables
-            .values()
-            .find(|&table_def| table_def.is_pattern && self.matches_pattern(table_path, &table_def.name))
+        self.tables.values().find(|&table_def| {
+            table_def.is_pattern && self.matches_pattern(table_path, &table_def.name)
+        })
     }
 
     /// Check if a table path matches a pattern table name.

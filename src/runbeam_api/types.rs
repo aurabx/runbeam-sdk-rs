@@ -200,15 +200,7 @@ pub struct StoreConfigResponse {
     /// Success message
     pub message: String,
     /// Response data with model and change info
-    pub data: StoreConfigResponseData,
-}
-
-/// Data section of store config response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoreConfigResponseData {
-    /// Model information
-    pub model: StoreConfigModel,
-    // Change info omitted for now - can add if needed
+    pub data: StoreConfigModel,
 }
 
 /// Model information from store config response
@@ -285,20 +277,17 @@ mod tests {
             "success": true,
             "message": "Gateway configuration updated successfully",
             "data": {
-                "model": {
-                    "id": "01k9npa4tatmwddk66xxpcr2r0",
-                    "type": "gateway",
-                    "action": "updated"
-                },
-                "change": {}
+                "id": "01k9npa4tatmwddk66xxpcr2r0",
+                "type": "gateway",
+                "action": "updated"
             }
         }"#;
 
         let response: StoreConfigResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.success, true);
         assert!(response.message.contains("updated successfully"));
-        assert_eq!(response.data.model.id, "01k9npa4tatmwddk66xxpcr2r0");
-        assert_eq!(response.data.model.model_type, "gateway");
-        assert_eq!(response.data.model.action, "updated");
+        assert_eq!(response.data.id, "01k9npa4tatmwddk66xxpcr2r0");
+        assert_eq!(response.data.model_type, "gateway");
+        assert_eq!(response.data.action, "updated");
     }
 }

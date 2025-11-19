@@ -417,7 +417,7 @@ name = "test"
 
     let result = validate_toml(content, invalid_schema);
     assert!(result.is_err(), "Invalid schema should cause error");
-    
+
     match result.unwrap_err() {
         ValidationError::SchemaParseError(_) => {
             // Expected error type
