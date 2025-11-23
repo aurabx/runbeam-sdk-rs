@@ -31,13 +31,16 @@
 //! use runbeam_sdk::{
 //!     RunbeamClient,
 //!     validate_jwt_token,
+//!     JwtValidationOptions,
 //!     save_machine_token,
 //!     MachineToken,
 //! };
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Validate a user JWT token
-//! let claims = validate_jwt_token("eyJhbGci...", 24).await?;
+//! // Validate a user JWT token with trusted issuers
+//! let options = JwtValidationOptions::new()
+//!     .with_trusted_issuers(vec!["https://api.runbeam.io".to_string()]);
+//! let claims = validate_jwt_token("eyJhbGci...", &options).await?;
 //!
 //! // Create API client from JWT issuer
 //! let client = RunbeamClient::new(claims.api_base_url());
@@ -108,7 +111,7 @@ pub use validation::{
 
 pub use runbeam_api::{
     client::RunbeamClient,
-    jwt::{extract_bearer_token, validate_jwt_token, JwtClaims},
+    jwt::{extract_bearer_token, validate_jwt_token, JwtClaims, JwtValidationOptions},
     resources::{
         AcknowledgeChangesRequest, AcknowledgeChangesResponse, Authentication, Backend,
         BaseUrlResponse, Change, ChangeAppliedResponse, ChangeFailedRequest, ChangeFailedResponse,

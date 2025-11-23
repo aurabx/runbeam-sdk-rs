@@ -275,12 +275,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-### JWT Token Authentication (Legacy)
+### JWT Token Authentication with Security Validation
 
 ```rust
 use runbeam_sdk::{
     RunbeamClient,
     validate_jwt_token,
+    JwtValidationOptions,
     save_machine_token,  // Backwards-compatible wrapper
     load_machine_token,  // Backwards-compatible wrapper
     MachineToken,
@@ -289,9 +290,18 @@ use runbeam_sdk::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Validate user JWT token
+    // 1. Validate user JWT token with security options
     let user_token = "eyJhbGci...";
-    let claims = validate_jwt_token(user_token, 24).await?;
+    
+    // Configure validation with trusted issuers (IMPORTANT for security)
+    let options = JwtValidationOptions::new()
+        .with_trusted_issuers(vec![
+            "https://api.runbeam.io".to_string(),
+            "https://staging.runbeam.io".to_string(),
+        ])
+        .with_jwks_cache_duration_hours(24);
+    
+    let claims = validate_jwt_token(user_token, &options).await?;
     
     // 2. Create API client from JWT issuer
     let client = RunbeamClient::new(claims.api_base_url());
@@ -377,6 +387,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+### Advanced JWT Validation Configuration
+
+The SDK provides comprehensive JWT validation options aligned with the harmony-dsl JWT authentication middleware schema. All options support security best practices.
+
+```rust
+use runbeam_sdk::{validate_jwt_token, JwtValidationOptions};
+use jsonwebtoken::Algorithm;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let user_token = "eyJhbGci...";
+    
+    // Full configuration example with all security options
+    let options = JwtValidationOptions::new()
+        .with_trusted_issuers(vec![
+            "https://api.runbeam.io".to_string(),
+            "https://staging.runbeam.io".to_string(),
+        ])
+        // Optional: Override JWKS endpoint (instead of auto-discovery)
+        .with_jwks_uri("https://api.runbeam.io/.well-known/jwks.json".to_string())
+        // Optional: Restrict allowed signing algorithms
+        .with_algorithms(vec![Algorithm::RS256, Algorithm::ES256])
+        // Optional: Require additional custom claims
+        .with_required_claims(vec!["email".to_string(), "scope".to_string()])
+        // Optional: Clock skew tolerance (0-300 seconds)
+        .with_leeway_seconds(60)
+        // Optional: Disable expiration validation (not recommended)
+        .with_validate_expiry(true)
+        // JWKS caching duration
+        .with_jwks_cache_duration_hours(24);
+    
+    let claims = validate_jwt_token(user_token, &options).await?;
+    println!("Token valid for user: {}", claims.sub);
+    
+    Ok(())
+}
+```
+
+#### Security Best Practices
+
+**CRITICAL: Always configure `trusted_issuers` in production!**
+
+Without issuer validation, an attacker can:
+1. Stand up their own authorization server with a JWKS endpoint
+2. Issue tokens with any claims they want (elevated permissions, fake user IDs, etc.)
+3. Sign tokens with their own private key
+4. These malicious tokens will pass signature validation
+
+Example secure configuration:
+
+```rust
+let options = JwtValidationOptions::new()
+    .with_trusted_issuers(vec!["https://api.runbeam.io".to_string()]);
+```
+
+**Other security recommendations:**
+- Use `with_algorithms()` to restrict allowed signing algorithms (prevents algorithm confusion attacks)
+- Use `with_required_claims()` to enforce presence of critical claims
+- Keep `validate_expiry` enabled (default: true) to reject expired tokens
+- Use reasonable `leeway_seconds` (30-60s) only if experiencing clock skew issues
+- Monitor JWT validation failures in logs for security incidents
 
 ### Choosing Between Authentication Methods
 

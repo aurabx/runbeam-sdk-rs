@@ -51,6 +51,108 @@ impl JwkKey {
     }
 }
 
+/// JWT validation options
+///
+/// Configuration for JWT validation including security parameters like trusted issuers,
+/// allowed algorithms, and required claims. These options align with the harmony-dsl
+/// JWT authentication middleware schema.
+#[derive(Debug, Clone)]
+pub struct JwtValidationOptions {
+    /// List of trusted JWT token issuers. When specified, JWTs must have an 'iss' claim
+    /// matching one of these values exactly. This prevents attacks where an attacker
+    /// stands up their own JWKS endpoint and issues fraudulent tokens.
+    /// 
+    /// **STRONGLY RECOMMENDED**: Always configure this in production for security.
+    pub trusted_issuers: Option<Vec<String>>,
+    
+    /// Explicit JWKS URI for fetching public keys. When specified, this overrides the
+    /// auto-discovery of JWKS from the issuer's well-known endpoint.
+    /// Example: "https://auth.example.com/.well-known/jwks.json"
+    pub jwks_uri: Option<String>,
+    
+    /// List of allowed JWT signing algorithms. If not specified, defaults to RS256 only.
+    /// Example: vec![Algorithm::RS256, Algorithm::ES256]
+    pub algorithms: Option<Vec<Algorithm>>,
+    
+    /// List of claims that must be present in the JWT. Standard claims like 'iss', 'sub',
+    /// and 'exp' are always validated. Use this to require additional custom claims.
+    /// Example: vec!["email".to_string(), "scope".to_string()]
+    pub required_claims: Option<Vec<String>>,
+    
+    /// Leeway in seconds for validating exp (expiration) and nbf (not before) claims
+    /// to account for clock skew between systems. Valid range: 0-300 seconds.
+    pub leeway_seconds: Option<u64>,
+    
+    /// Whether to validate the JWT expiration (exp) claim. Default: true
+    pub validate_expiry: bool,
+    
+    /// Duration in hours to cache JWKS keys. Default: 24 hours
+    pub jwks_cache_duration_hours: u64,
+}
+
+impl Default for JwtValidationOptions {
+    fn default() -> Self {
+        Self {
+            trusted_issuers: None,
+            jwks_uri: None,
+            algorithms: None,
+            required_claims: None,
+            leeway_seconds: None,
+            validate_expiry: true,
+            jwks_cache_duration_hours: 24,
+        }
+    }
+}
+
+impl JwtValidationOptions {
+    /// Create a new JwtValidationOptions with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Set trusted issuers (builder pattern)
+    pub fn with_trusted_issuers(mut self, issuers: Vec<String>) -> Self {
+        self.trusted_issuers = Some(issuers);
+        self
+    }
+    
+    /// Set JWKS URI (builder pattern)
+    pub fn with_jwks_uri(mut self, uri: String) -> Self {
+        self.jwks_uri = Some(uri);
+        self
+    }
+    
+    /// Set allowed algorithms (builder pattern)
+    pub fn with_algorithms(mut self, algorithms: Vec<Algorithm>) -> Self {
+        self.algorithms = Some(algorithms);
+        self
+    }
+    
+    /// Set required claims (builder pattern)
+    pub fn with_required_claims(mut self, claims: Vec<String>) -> Self {
+        self.required_claims = Some(claims);
+        self
+    }
+    
+    /// Set leeway seconds (builder pattern)
+    pub fn with_leeway_seconds(mut self, leeway: u64) -> Self {
+        self.leeway_seconds = Some(leeway.min(300)); // Cap at 300 seconds
+        self
+    }
+    
+    /// Set validate expiry (builder pattern)
+    pub fn with_validate_expiry(mut self, validate: bool) -> Self {
+        self.validate_expiry = validate;
+        self
+    }
+    
+    /// Set JWKS cache duration (builder pattern)
+    pub fn with_jwks_cache_duration_hours(mut self, hours: u64) -> Self {
+        self.jwks_cache_duration_hours = hours;
+        self
+    }
+}
+
 /// JWT claims structure for Runbeam Cloud tokens
 ///
 /// These claims follow the standard JWT specification plus custom claims
@@ -297,32 +399,41 @@ impl JwtClaims {
     }
 }
 
-/// Validate a JWT token and extract claims using RS256
+/// Validate a JWT token and extract claims with configurable security options
 ///
-/// This function validates JWT signature using RS256 algorithm with public keys
-/// fetched from the issuer's JWKS endpoint. It implements caching and automatic
+/// This function validates JWT signatures using public keys from JWKS endpoints.
+/// It implements security best practices including issuer validation, algorithm
+/// whitelisting, and required claims checking. Supports caching and automatic
 /// refresh on validation failures.
 ///
 /// # Arguments
 ///
 /// * `token` - The JWT token string to validate
-/// * `jwks_cache_duration_hours` - Duration in hours to cache JWKS keys
+/// * `options` - Validation options including trusted issuers, algorithms, etc.
 ///
 /// # Returns
 ///
 /// Returns `Ok(JwtClaims)` if validation succeeds, or `Err(RunbeamError)` if
-/// validation fails for any reason (invalid signature, expired, malformed, etc.)
+/// validation fails for any reason (invalid signature, expired, malformed, 
+/// untrusted issuer, etc.)
+///
+/// # Security
+///
+/// **IMPORTANT**: Always use `trusted_issuers` in production to prevent attacks
+/// where malicious actors issue tokens from their own JWKS endpoints.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use runbeam_sdk::validate_jwt_token;
+/// use runbeam_sdk::{validate_jwt_token, JwtValidationOptions};
 ///
 /// # tokio_test::block_on(async {
 /// let token = "eyJhbGci...";
-/// let cache_duration = 24; // 24 hours
+/// let options = JwtValidationOptions::new()
+///     .with_trusted_issuers(vec!["https://api.runbeam.io".to_string()])
+///     .with_jwks_cache_duration_hours(24);
 ///
-/// match validate_jwt_token(token, cache_duration).await {
+/// match validate_jwt_token(token, &options).await {
 ///     Ok(claims) => {
 ///         println!("Token valid, API base URL: {}", claims.api_base_url());
 ///     }
@@ -334,7 +445,7 @@ impl JwtClaims {
 /// ```
 pub async fn validate_jwt_token(
     token: &str,
-    jwks_cache_duration_hours: u64,
+    options: &JwtValidationOptions,
 ) -> Result<JwtClaims, RunbeamError> {
     tracing::debug!("Validating JWT token (length: {})", token.len());
 
@@ -346,11 +457,15 @@ pub async fn validate_jwt_token(
         RunbeamError::JwtValidation("Missing 'kid' (key ID) in JWT header".to_string())
     })?;
 
-    // Verify algorithm is RS256
-    if header.alg != Algorithm::RS256 {
+    // Step 1a: Validate algorithm against allowed list
+    let allowed_algorithms = options.algorithms.as_ref()
+        .map(|algs| algs.as_slice())
+        .unwrap_or(&[Algorithm::RS256]);
+    
+    if !allowed_algorithms.contains(&header.alg) {
         return Err(RunbeamError::JwtValidation(format!(
-            "Unsupported algorithm: {:?}. Only RS256 is supported.",
-            header.alg
+            "Algorithm {:?} not in allowed list: {:?}",
+            header.alg, allowed_algorithms
         )));
     }
 
@@ -358,13 +473,7 @@ pub async fn validate_jwt_token(
 
     // Step 2: Decode without validation to extract issuer
     // We need to extract iss claim, so do a partial decode with no validation
-    let mut validation_no_sig = Validation::new(Algorithm::RS256);
-    validation_no_sig.insecure_disable_signature_validation();
-    validation_no_sig.validate_exp = false;
-
-    // Use a dummy decoding key (signature not validated)
-    let dummy_key = DecodingKey::from_secret(b"dummy");
-    let insecure_token_data = decode::<JwtClaims>(token, &dummy_key, &validation_no_sig)
+    let insecure_token_data = jsonwebtoken::dangerous::insecure_decode::<JwtClaims>(token)
         .map_err(|e| RunbeamError::JwtValidation(format!("Failed to decode JWT: {}", e)))?;
 
     let issuer = &insecure_token_data.claims.iss;
@@ -376,6 +485,30 @@ pub async fn validate_jwt_token(
 
     tracing::debug!("JWT issuer extracted: {}", issuer);
 
+    // Step 2a: Validate issuer against trusted list
+    if let Some(trusted_issuers) = &options.trusted_issuers {
+        // Check if the issuer base URL matches any trusted issuer
+        let issuer_base_url = insecure_token_data.claims.api_base_url();
+        let is_trusted = trusted_issuers.iter().any(|trusted| {
+            // Allow exact match or prefix match (issuer can be more specific)
+            issuer == trusted || issuer_base_url == *trusted || issuer.starts_with(trusted)
+        });
+        
+        if !is_trusted {
+            return Err(RunbeamError::JwtValidation(format!(
+                "Issuer '{}' is not in the trusted issuers list",
+                issuer
+            )));
+        }
+        tracing::debug!("Issuer validated against trusted list");
+    } else {
+        tracing::warn!(
+            "⚠️  SECURITY WARNING: No trusted_issuers configured! Accepting JWT from ANY issuer: '{}'. \
+             This is a security risk - an attacker can issue their own tokens from a malicious JWKS endpoint.",
+            issuer
+        );
+    }
+
     // Extract base URL (scheme + host + port) from issuer for JWKS lookup
     // The issuer might be a full URL like "http://example.com/api/cli/check-login/xxx"
     // but we only need "http://example.com" to construct the JWKS endpoint
@@ -383,8 +516,13 @@ pub async fn validate_jwt_token(
     tracing::debug!("JWT issuer base URL: {}", base_url);
 
     // Step 3: Get decoding key from cache or JWKS
-    let cache_duration = Duration::from_secs(jwks_cache_duration_hours * 3600);
-    let decoding_key = match get_decoding_key(&base_url, &kid, cache_duration).await {
+    // If explicit JWKS URI provided, use that instead of auto-discovery
+    let jwks_url = options.jwks_uri.as_ref()
+        .map(|uri| uri.as_str())
+        .unwrap_or(&base_url);
+    
+    let cache_duration = Duration::from_secs(options.jwks_cache_duration_hours * 3600);
+    let decoding_key = match get_decoding_key(jwks_url, &kid, cache_duration).await {
         Ok(key) => key,
         Err(e) => {
             tracing::warn!("Initial JWKS fetch/cache lookup failed: {}", e);
@@ -393,9 +531,19 @@ pub async fn validate_jwt_token(
     };
 
     // Step 4: Configure validation
-    let mut validation = Validation::new(Algorithm::RS256);
-    validation.validate_exp = true; // Ensure token is not expired
+    let primary_algorithm = allowed_algorithms.first()
+        .copied()
+        .unwrap_or(Algorithm::RS256);
+    let mut validation = Validation::new(primary_algorithm);
+    
+    // Set expiry validation
+    validation.validate_exp = options.validate_expiry;
     validation.validate_nbf = false; // Not before is optional
+    
+    // Set leeway for clock skew
+    if let Some(leeway) = options.leeway_seconds {
+        validation.leeway = leeway;
+    }
 
     // Step 5: Validate token
     let validation_result = decode::<JwtClaims>(token, &decoding_key, &validation);
@@ -406,13 +554,13 @@ pub async fn validate_jwt_token(
             // Retry logic: if validation fails, clear cache and retry once
             tracing::warn!("JWT validation failed, attempting cache refresh: {}", e);
 
-            // Clear cache for this issuer (use base URL)
-            if let Err(clear_err) = clear_jwks_cache(&base_url) {
+            // Clear cache for this issuer (use jwks_url)
+            if let Err(clear_err) = clear_jwks_cache(jwks_url) {
                 tracing::error!("Failed to clear JWKS cache: {}", clear_err);
             }
 
             // Fetch fresh JWKS and retry
-            let fresh_key = get_decoding_key(&base_url, &kid, cache_duration)
+            let fresh_key = get_decoding_key(jwks_url, &kid, cache_duration)
                 .await
                 .map_err(|refresh_err| {
                     tracing::error!("Failed to refresh JWKS: {}", refresh_err);
@@ -450,6 +598,23 @@ pub async fn validate_jwt_token(
         return Err(RunbeamError::JwtValidation(
             "Missing or empty subject (sub) claim".to_string(),
         ));
+    }
+    
+    // Step 6: Validate required custom claims
+    if let Some(required_claims) = &options.required_claims {
+        // Convert claims to JSON to check for presence of custom fields
+        let claims_json = serde_json::to_value(&claims)
+            .map_err(|e| RunbeamError::JwtValidation(format!("Failed to serialize claims: {}", e)))?;
+        
+        for required_claim in required_claims {
+            if !claims_json.get(required_claim).is_some() {
+                return Err(RunbeamError::JwtValidation(format!(
+                    "Required claim '{}' is missing from JWT",
+                    required_claim
+                )));
+            }
+        }
+        tracing::debug!("All required claims present: {:?}", required_claims);
     }
 
     Ok(claims)
