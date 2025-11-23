@@ -1,5 +1,35 @@
 use serde::{Deserialize, Serialize};
 
+// ========================================================================================
+// SHARED CONFIGURATION STRUCTURES
+// ========================================================================================
+
+/// Normalized connection configuration shared across peers, targets, endpoints, and backends
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionConfig {
+    #[serde(default)]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub protocol: Option<String>,
+    #[serde(default)]
+    pub base_path: Option<String>,
+}
+
+/// Authentication configuration shared across peers, targets, endpoints, and backends
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthenticationConfig {
+    #[serde(default)]
+    pub method: Option<String>,
+    #[serde(default)]
+    pub credentials_path: Option<String>,
+}
+
+// ========================================================================================
+// PAGINATED RESPONSE STRUCTURES
+// ========================================================================================
+
 /// Paginated response wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
@@ -37,6 +67,78 @@ pub struct PaginationMeta {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceResponse<T> {
     pub data: T,
+}
+
+// ========================================================================================
+// RESOURCE TYPES
+// ========================================================================================
+
+/// Peer resource - represents external systems that send requests to Harmony
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Peer {
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub code: String,
+    pub name: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    #[serde(default)]
+    pub connection: Option<ConnectionConfig>,
+    /// Protocol type - the type of protocol used by this peer (http, https, dicom, etc.)
+    #[serde(default)]
+    pub protocol: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub authentication: Option<AuthenticationConfig>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub timeout_secs: Option<u32>,
+    #[serde(default)]
+    pub max_retries: Option<u32>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// Target resource - represents external systems that receive requests from Harmony
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Target {
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    #[serde(default)]
+    pub id: Option<String>,
+    pub code: String,
+    pub name: String,
+    pub team_id: String,
+    pub gateway_id: Option<String>,
+    #[serde(default)]
+    pub connection: Option<ConnectionConfig>,
+    /// Protocol type - the type of protocol used by this target (http, https, dicom, etc.)
+    #[serde(default)]
+    pub protocol: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub authentication: Option<AuthenticationConfig>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub timeout_secs: Option<u32>,
+    #[serde(default)]
+    pub max_retries: Option<u32>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Gateway resource
@@ -112,12 +214,24 @@ pub struct Endpoint {
     pub gateway_id: Option<String>,
     #[serde(default)]
     pub service_id: Option<String>,
+    /// Reference to a peer defined in main config (inherits peer's connection settings)
+    #[serde(default)]
+    pub peer_ref: Option<String>,
+    /// Connection configuration (overrides peer_ref settings if both specified)
+    #[serde(default)]
+    pub connection: Option<ConnectionConfig>,
+    /// Authentication configuration (overrides peer_ref settings if both specified)
+    #[serde(default)]
+    pub authentication: Option<AuthenticationConfig>,
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
     pub methods: Option<Vec<String>>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Service-specific options (highest precedence)
+    #[serde(default)]
+    pub options: Option<serde_json::Value>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -137,10 +251,25 @@ pub struct Backend {
     pub gateway_id: Option<String>,
     #[serde(default)]
     pub service_id: Option<String>,
+    /// Reference to a target defined in main config (inherits target's connection settings)
+    #[serde(default)]
+    pub target_ref: Option<String>,
+    /// Connection configuration (overrides target_ref settings if both specified)
+    #[serde(default)]
+    pub connection: Option<ConnectionConfig>,
+    /// Authentication configuration (overrides target_ref settings if both specified)
+    #[serde(default)]
+    pub authentication: Option<AuthenticationConfig>,
     #[serde(default)]
     pub url: Option<String>,
     #[serde(default)]
     pub timeout_seconds: Option<u32>,
+    /// Maximum retry attempts (overrides target_ref.max_retries)
+    #[serde(default)]
+    pub max_retries: Option<u32>,
+    /// Service-specific options (highest precedence)
+    #[serde(default)]
+    pub options: Option<serde_json::Value>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -245,6 +374,33 @@ impl PolicyRules {
     pub fn into_inner(self) -> Vec<String> {
         self.0
     }
+}
+
+/// Rule resource
+///
+/// Represents a rule definition that can be referenced by policies.
+/// Rules define access control logic with configurable options.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rule {
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    pub id: String,
+    pub code: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub rule_type: String,
+    pub team_id: String,
+    pub gateway_id: String,
+    #[serde(default)]
+    pub weight: Option<u32>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    #[serde(default)]
+    pub options: Option<serde_json::Value>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 /// Policy resource
@@ -373,6 +529,10 @@ pub struct Authentication {
 pub struct GatewayConfiguration {
     pub gateway: Gateway,
     #[serde(default)]
+    pub peers: Vec<Peer>,
+    #[serde(default)]
+    pub targets: Vec<Target>,
+    #[serde(default)]
     pub services: Vec<Service>,
     #[serde(default)]
     pub endpoints: Vec<Endpoint>,
@@ -386,6 +546,8 @@ pub struct GatewayConfiguration {
     pub transforms: Vec<Transform>,
     #[serde(default)]
     pub policies: Vec<Policy>,
+    #[serde(default)]
+    pub rules: Vec<Rule>,
     #[serde(default)]
     pub networks: Vec<Network>,
     #[serde(default)]

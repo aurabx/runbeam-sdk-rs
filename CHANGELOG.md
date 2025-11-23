@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-11-23
+
+### Added
+
+- **Harmony DSL v1.8.0 Support**
+  - Added `Peer` resource type for external systems that send requests to Harmony
+  - Added `Target` resource type for external systems that receive requests from Harmony
+  - Added `Rule` resource type for policy rule definitions
+  - Added shared configuration structures:
+    - `ConnectionConfig` - normalized connection settings (host, port, protocol, base_path)
+    - `AuthenticationConfig` - authentication settings (method, credentials_path)
+
+- **Endpoint Enhancements**
+  - Added `peer_ref` field - reference to peer configuration for inheritance
+  - Added `connection` field - normalized connection overrides
+  - Added `authentication` field - authentication configuration overrides
+  - Added `options` field - service-specific options (highest precedence)
+
+- **Backend Enhancements**
+  - Added `target_ref` field - reference to target configuration for inheritance
+  - Added `connection` field - normalized connection overrides
+  - Added `authentication` field - authentication configuration overrides
+  - Added `max_retries` field - retry configuration
+  - Added `options` field - service-specific options (highest precedence)
+
+- **GatewayConfiguration Updates**
+  - Added `peers` collection for peer system configurations
+  - Added `targets` collection for target system configurations
+  - Added `rules` collection for rule definitions
+
+### Changed
+
+- Resource types now support normalized connection settings across all components
+- Endpoints and backends now support configuration inheritance through references
+- All new fields are optional to maintain backward compatibility
+
+### Technical Details
+
+- Aligns with harmony-dsl config schema v1.8.0 and pipeline schema v1.7.0
+- Supports peer_ref/target_ref configuration reuse pattern
+- Three-tier precedence: base (peer/target) → overrides (connection/auth) → options (service-specific)
+- All existing API responses remain compatible (new fields are optional)
+
 ## [0.7.2] - 2025-11-19
 
 - Fixed: Runbeam configuration synchronisation
@@ -220,6 +263,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.8.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.7.2...v0.8.0
+[0.7.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.7.0...v0.7.2
 [0.7.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.0...v0.6.1

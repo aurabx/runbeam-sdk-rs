@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "runbeam-sdk"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "age",
  "base64 0.22.1",
