@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-11-24
+
+### Breaking Changes
+
+- **Authentication Refactoring**: The `authentication` field in `Peer`, `Target`, `Endpoint`, `Backend`, and `Middleware` resources is now a reference string (`Option<String>`) pointing to a centralized authentication definition, replacing the previous inline configuration object.
+- Removed `AuthenticationConfig` struct as it is no longer used.
+
+### Added
+
+- **Centralized Authentication Support**: Added `authentications` field to `GatewayConfiguration` to store reusable authentication definitions.
+- **Authentication Resource**: Updated `Authentication` struct to support `method` (String) and flexible `options` (JSON value).
+
 ## [0.8.0] - 2025-11-23
 
 ### Added
