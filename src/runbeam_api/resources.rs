@@ -17,14 +17,6 @@ pub struct ConnectionConfig {
     pub base_path: Option<String>,
 }
 
-/// Authentication configuration shared across peers, targets, endpoints, and backends
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthenticationConfig {
-    #[serde(default)]
-    pub method: Option<String>,
-    #[serde(default)]
-    pub credentials_path: Option<String>,
-}
 
 // ========================================================================================
 // PAGINATED RESPONSE STRUCTURES
@@ -93,8 +85,9 @@ pub struct Peer {
     pub description: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Reference to an authentication defined in main config
     #[serde(default)]
-    pub authentication: Option<AuthenticationConfig>,
+    pub authentication: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
@@ -127,8 +120,9 @@ pub struct Target {
     pub description: Option<String>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Reference to an authentication defined in main config
     #[serde(default)]
-    pub authentication: Option<AuthenticationConfig>,
+    pub authentication: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
@@ -220,9 +214,9 @@ pub struct Endpoint {
     /// Connection configuration (overrides peer_ref settings if both specified)
     #[serde(default)]
     pub connection: Option<ConnectionConfig>,
-    /// Authentication configuration (overrides peer_ref settings if both specified)
+    /// Authentication reference (overrides peer_ref settings if both specified)
     #[serde(default)]
-    pub authentication: Option<AuthenticationConfig>,
+    pub authentication: Option<String>,
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
@@ -257,9 +251,9 @@ pub struct Backend {
     /// Connection configuration (overrides target_ref settings if both specified)
     #[serde(default)]
     pub connection: Option<ConnectionConfig>,
-    /// Authentication configuration (overrides target_ref settings if both specified)
+    /// Authentication reference (overrides target_ref settings if both specified)
     #[serde(default)]
-    pub authentication: Option<AuthenticationConfig>,
+    pub authentication: Option<String>,
     #[serde(default)]
     pub url: Option<String>,
     #[serde(default)]
@@ -313,6 +307,9 @@ pub struct Middleware {
     pub name: String,
     pub team_id: String,
     pub middleware_type: String,
+    /// Reference to an authentication defined in main config
+    #[serde(default)]
+    pub authentication: Option<String>,
     #[serde(default)]
     pub options: Option<serde_json::Value>,
     #[serde(default)]
@@ -516,8 +513,9 @@ pub struct Authentication {
     pub name: String,
     pub team_id: Option<String>,
     pub gateway_id: Option<String>,
+    pub method: String,
     #[serde(default)]
-    pub options: Option<String>,
+    pub options: Option<serde_json::Value>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -552,6 +550,8 @@ pub struct GatewayConfiguration {
     pub networks: Vec<Network>,
     #[serde(default)]
     pub runbeam: Option<Runbeam>,
+    #[serde(default)]
+    pub authentications: Vec<Authentication>,
 }
 
 /// Change resource for configuration change tracking (API v1.0)

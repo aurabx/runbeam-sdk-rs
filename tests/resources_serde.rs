@@ -422,7 +422,8 @@ fn test_authentication_resource() {
         "name": "JWT Authentication",
         "team_id": "team-456",
         "gateway_id": "gateway-789",
-        "options": "{\"issuer\": \"https://auth.example.com\"}",
+        "method": "jwt",
+        "options": {"issuer": "https://auth.example.com"},
         "created_at": "2024-01-01T00:00:00Z",
         "updated_at": "2024-01-01T00:00:00Z"
     });
