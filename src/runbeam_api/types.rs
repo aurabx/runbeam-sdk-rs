@@ -215,6 +215,111 @@ pub struct StoreConfigModel {
     pub action: String,
 }
 
+/// Mesh information returned from Runbeam Cloud API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshInfo {
+    /// Unique mesh identifier (ULID)
+    pub id: String,
+    /// Human-readable mesh name
+    pub name: String,
+    /// Protocol type for mesh communication (http, http3)
+    #[serde(rename = "type")]
+    pub mesh_type: String,
+    /// Mesh provider (local, runbeam)
+    pub provider: String,
+    /// Authentication type for mesh members (currently only "jwt")
+    #[serde(default = "default_auth_type")]
+    pub auth_type: String,
+    /// JWT secret for HS256 symmetric key authentication (local provider)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwt_secret: Option<String>,
+    /// Path to RSA private key (PEM) for RS256 JWT signing (local provider)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwt_private_key_path: Option<String>,
+    /// Path to RSA public key (PEM) for RS256 JWT verification (local provider)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jwt_public_key_path: Option<String>,
+    /// List of ingress definition names
+    #[serde(default)]
+    pub ingress: Vec<String>,
+    /// List of egress definition names
+    #[serde(default)]
+    pub egress: Vec<String>,
+    /// Whether the mesh is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Mesh ingress information - allows other mesh members to send requests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshIngressInfo {
+    /// Unique ingress identifier (ULID)
+    pub id: String,
+    /// Human-readable ingress name
+    pub name: String,
+    /// Protocol type for incoming mesh requests (http, http3)
+    #[serde(rename = "type")]
+    pub ingress_type: String,
+    /// Pipeline name that owns this ingress (required)
+    pub pipeline: String,
+    /// Mode: 'default' allows all requests, 'mesh' requires valid mesh authentication
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    /// Optional endpoint override. If omitted, the first endpoint in the pipeline is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    /// List of URLs that map to this ingress
+    #[serde(default)]
+    pub urls: Vec<String>,
+    /// Whether the ingress is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Mesh egress information - allows sending requests to other mesh members
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshEgressInfo {
+    /// Unique egress identifier (ULID)
+    pub id: String,
+    /// Human-readable egress name
+    pub name: String,
+    /// Protocol type for outgoing mesh requests (http, http3)
+    #[serde(rename = "type")]
+    pub egress_type: String,
+    /// Pipeline name that owns this egress (required)
+    pub pipeline: String,
+    /// Mode: 'default' allows all destinations, 'mesh' requires destination to match a mesh ingress
+    #[serde(default = "default_mode")]
+    pub mode: String,
+    /// Optional backend override. If omitted, the first backend in the pipeline is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Whether the egress is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_mode() -> String {
+    "default".to_string()
+}
+
+fn default_auth_type() -> String {
+    "jwt".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
