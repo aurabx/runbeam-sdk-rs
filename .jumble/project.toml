@@ -1,0 +1,46 @@
+[project]
+name = "runbeam-sdk"
+description = "Rust SDK for integrating with Runbeam Cloud API - JWT validation, API client, secure token storage"
+language = "rust"
+version = "0.9.1"
+repository = "https://github.com/aurabx/runbeam-sdk-rs"
+
+[commands]
+build = "cargo build --release"
+test = "cargo test"
+lint = "cargo clippy && cargo fmt --check"
+doc = "cargo doc --open"
+
+[entry_points]
+main = "src/lib.rs"
+api = "src/runbeam_api/"
+storage = "src/storage/"
+validation = "src/validation/"
+
+[dependencies]
+internal = ["harmony-dsl"]
+external = ["reqwest", "jsonwebtoken", "serde", "tokio", "age", "chrono"]
+
+[related_projects]
+upstream = ["harmony-dsl"]
+downstream = ["runbeam-cli", "harmony-proxy"]
+
+[concepts.api_client]
+files = ["src/runbeam_api/client.rs", "src/runbeam_api/resources.rs"]
+summary = "HTTP client for Runbeam Cloud API - gateways, services, endpoints, backends, pipelines"
+
+[concepts.jwt_validation]
+files = ["src/runbeam_api/jwt.rs"]
+summary = "RS256 JWT validation with JWKS endpoint discovery and automatic key caching"
+
+[concepts.token_storage]
+files = ["src/runbeam_api/token_storage.rs", "src/storage/"]
+summary = "Secure token persistence with age encryption, instance isolation at ~/.runbeam/<id>/"
+
+[concepts.machine_tokens]
+files = ["src/runbeam_api/types.rs"]
+summary = "MachineToken struct for autonomous gateway authentication with 30-day expiry"
+
+[concepts.config_validation]
+files = ["src/validation/"]
+summary = "Configuration validation using harmony-dsl schema definitions"
