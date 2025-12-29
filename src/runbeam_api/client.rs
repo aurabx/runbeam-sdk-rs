@@ -1286,6 +1286,117 @@ impl RunbeamClient {
 
         Ok(response_data)
     }
+
+    // ========== Mesh Authentication API Methods ==========
+
+    /// Request a mesh authentication token
+    ///
+    /// Request a JWT for authenticating to another mesh member. The requesting gateway
+    /// must have an enabled egress in the specified mesh, and the destination URL must
+    /// match an ingress URL pattern in the mesh.
+    ///
+    /// # Authentication
+    ///
+    /// Requires a gateway machine token.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Gateway machine token for authentication
+    /// * `mesh_id` - The mesh ID to authenticate against
+    /// * `destination_url` - The destination URL the token is being requested for
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(MeshTokenResponse)` with the signed JWT and expiry,
+    /// or `Err(RunbeamError)` if the request fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let response = client.request_mesh_token(
+    ///     "machine_token_abc123",
+    ///     "01HXYZ123456789ABCDEF",
+    ///     "https://partner.example.com/fhir/r4/Patient"
+    /// ).await?;
+    ///
+    /// println!("Token: {}", response.token);
+    /// println!("Expires at: {}", response.expires_at);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn request_mesh_token(
+        &self,
+        token: impl Into<String>,
+        mesh_id: impl Into<String>,
+        destination_url: impl Into<String>,
+    ) -> Result<crate::runbeam_api::resources::MeshTokenResponse, RunbeamError> {
+        let mesh_id = mesh_id.into();
+        let destination_url = destination_url.into();
+        let url = format!("{}/harmony/mesh/token", self.base_url);
+
+        tracing::debug!(
+            "Requesting mesh token: mesh_id={}, destination={}",
+            mesh_id,
+            destination_url
+        );
+
+        let payload = crate::runbeam_api::resources::MeshTokenRequest {
+            mesh_id: mesh_id.clone(),
+            destination_url: destination_url.clone(),
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to send mesh token request: {}", e);
+                ApiError::from(e)
+            })?;
+
+        let status = response.status();
+        tracing::debug!("Received response with status: {}", status);
+
+        if !status.is_success() {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            tracing::error!(
+                "Mesh token request failed: HTTP {} - {}",
+                status.as_u16(),
+                error_body
+            );
+
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        let token_response: crate::runbeam_api::resources::MeshTokenResponse =
+            response.json().await.map_err(|e| {
+                tracing::error!("Failed to parse mesh token response: {}", e);
+                ApiError::Parse(format!("Failed to parse response: {}", e))
+            })?;
+
+        tracing::info!(
+            "Mesh token obtained: mesh_id={}, expires_at={}",
+            token_response.mesh_id,
+            token_response.expires_at
+        );
+
+        Ok(token_response)
+    }
 }
 
 #[cfg(test)]

@@ -639,3 +639,27 @@ pub type ChangeAppliedResponse = ChangeStatusResponse;
 
 /// Type alias for change failed response  
 pub type ChangeFailedResponse = ChangeStatusResponse;
+
+// ========================================================================================
+// MESH AUTHENTICATION
+// ========================================================================================
+
+/// Request payload for mesh token
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshTokenRequest {
+    /// The mesh ID to authenticate against
+    pub mesh_id: String,
+    /// The destination URL the token is being requested for
+    pub destination_url: String,
+}
+
+/// Response from mesh token request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeshTokenResponse {
+    /// The signed JWT token
+    pub token: String,
+    /// When the token expires (ISO 8601 format)
+    pub expires_at: String,
+    /// The mesh ID this token is valid for
+    pub mesh_id: String,
+}
