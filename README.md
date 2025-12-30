@@ -26,7 +26,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-runbeam-sdk = "0.5.0"
+runbeam-sdk = "0.10.0"
 ```
 
 ## Quick Start

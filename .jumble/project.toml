@@ -2,7 +2,7 @@
 name = "runbeam-sdk"
 description = "Rust SDK for integrating with Runbeam Cloud API - JWT validation, API client, secure token storage"
 language = "rust"
-version = "0.9.1"
+version = "0.10.0"
 repository = "https://github.com/aurabx/runbeam-sdk-rs"
 
 [commands]

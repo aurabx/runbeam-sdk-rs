@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2025-12-30
+
+### Added
+
+- Mesh API types for describing meshes, ingress, and egress definitions in Runbeam Cloud.
+- `MeshTokenRequest` and `MeshTokenResponse` types for requesting and handling short-lived mesh JWTs.
+- `RunbeamClient::request_mesh_token` helper for obtaining a mesh token for a specific mesh and destination URL.
+- Serialization and client tests in `tests/mesh_token_tests.rs` covering mesh token request/response flows and error handling.
+
+### Changed
+
+- Extended public types to include mesh-related models to support data mesh scenarios.
+
+### Internal
+
+- Updated local tooling configuration (jumble) for the new SDK version.
+
+## [0.9.1] - 2025-12-07
+
+### Changed
+
+- Updated `harmony-dsl` dependency to v1.9.0 to align with the latest Harmony configuration and pipeline schemas.
+
 ## [0.9.0] - 2025-11-24
 
 ### Breaking Changes
@@ -275,6 +298,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.10.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.9.1...v0.10.0
+[0.9.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.7.0...v0.7.2
 [0.7.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.6.2...v0.7.0
