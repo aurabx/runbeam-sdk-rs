@@ -327,26 +327,51 @@ impl EncryptedFilesystemStorage {
         Ok(key_dir.join("encryption.key"))
     }
 
-    /// Load encryption key from a base64-encoded string
+    /// Load encryption key from a string (supports both raw age keys and base64-encoded keys)
+    ///
+    /// This function attempts to parse the key in two ways:
+    /// 1. First, try to parse it directly as an age identity (e.g., "AGE-SECRET-KEY-...")
+    /// 2. If that fails, try to base64 decode it first, then parse as an age identity
+    ///
+    /// This provides backward compatibility with base64-encoded keys while also
+    /// supporting the simpler direct age key format.
     fn load_key_from_string(
-        key_base64: &str,
+        key_input: &str,
     ) -> Result<(age::x25519::Recipient, age::x25519::Identity), StorageError> {
         use base64::{engine::general_purpose, Engine as _};
 
-        let key_bytes = general_purpose::STANDARD
-            .decode(key_base64)
-            .map_err(|e| StorageError::KeyStorage(format!("Invalid base64 key: {}", e)))?;
+        let key_str = key_input.trim();
 
-        let key_str = String::from_utf8(key_bytes)
-            .map_err(|e| StorageError::KeyStorage(format!("Invalid UTF-8 in key: {}", e)))?;
+        // Try parsing directly as an age identity first
+        if let Ok(identity) = key_str.parse::<age::x25519::Identity>() {
+            tracing::debug!("Loaded age key directly (raw format)");
+            let recipient = identity.to_public();
+            return Ok((recipient, identity));
+        }
 
-        let identity = key_str
-            .parse::<age::x25519::Identity>()
-            .map_err(|e| StorageError::KeyStorage(format!("Invalid age identity: {}", e)))?;
+        // If direct parsing fails, try base64 decoding first
+        match general_purpose::STANDARD.decode(key_str) {
+            Ok(key_bytes) => {
+                let decoded_str = String::from_utf8(key_bytes).map_err(|e| {
+                    StorageError::KeyStorage(format!("Invalid UTF-8 in base64-decoded key: {}", e))
+                })?;
 
-        let recipient = identity.to_public();
+                let identity = decoded_str.parse::<age::x25519::Identity>().map_err(|e| {
+                    StorageError::KeyStorage(format!(
+                        "Invalid age identity after base64 decode: {}",
+                        e
+                    ))
+                })?;
 
-        Ok((recipient, identity))
+                tracing::debug!("Loaded age key from base64-encoded format");
+                let recipient = identity.to_public();
+                Ok((recipient, identity))
+            }
+            Err(_) => Err(StorageError::KeyStorage(
+                "Key is neither a valid age identity nor valid base64-encoded age identity"
+                    .to_string(),
+            )),
+        }
     }
 
     /// Load encryption key from a file
