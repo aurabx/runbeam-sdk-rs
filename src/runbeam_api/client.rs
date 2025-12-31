@@ -48,9 +48,25 @@ impl RunbeamClient {
         let base_url = base_url.into();
         tracing::debug!("Creating RunbeamClient with base URL: {}", base_url);
 
+        // Check if we should accept invalid certificates (for local development)
+        let accept_invalid_certs = std::env::var("RUNBEAM_ACCEPT_INVALID_CERTS")
+            .ok()
+            .and_then(|v| v.parse::<bool>().ok())
+            .unwrap_or(false);
+
+        let client = if accept_invalid_certs {
+            tracing::warn!("⚠️  Accepting invalid SSL certificates (RUNBEAM_ACCEPT_INVALID_CERTS=true). This should only be used in development!");
+            reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .expect("Failed to create HTTP client")
+        } else {
+            reqwest::Client::new()
+        };
+
         Self {
             base_url,
-            client: reqwest::Client::new(),
+            client,
         }
     }
 
