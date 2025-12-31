@@ -1413,6 +1413,107 @@ impl RunbeamClient {
 
         Ok(token_response)
     }
+
+    // ========== Resource Resolution API Methods ==========
+
+    /// Resolve a resource reference
+    ///
+    /// Resolve a provider-based resource reference to its full definition.
+    /// This is used to look up resources like mesh ingress/egress by their
+    /// reference string (e.g., `runbeam.acme.ingress.name.patient_api`).
+    ///
+    /// # Authentication
+    ///
+    /// Requires a gateway machine token.
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - Gateway machine token for authentication
+    /// * `reference` - The resource reference string to resolve
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(ResolveResourceResponse)` with the resolved resource,
+    /// or `Err(RunbeamError)` if resolution fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runbeam_sdk::RunbeamClient;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = RunbeamClient::new("http://runbeam.lndo.site");
+    /// let response = client.resolve_reference(
+    ///     "machine_token_abc123",
+    ///     "runbeam.acme.ingress.name.patient_api"
+    /// ).await?;
+    ///
+    /// println!("Resolved: {} ({})", response.data.name, response.data.resource_type);
+    /// println!("URLs: {:?}", response.data.urls);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn resolve_reference(
+        &self,
+        token: impl Into<String>,
+        reference: impl Into<String>,
+    ) -> Result<crate::runbeam_api::types::ResolveResourceResponse, RunbeamError> {
+        let reference = reference.into();
+        let url = format!(
+            "{}/harmony/resources/resolve?ref={}",
+            self.base_url,
+            urlencoding::encode(&reference)
+        );
+
+        tracing::debug!("Resolving resource reference: {}", reference);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token.into()))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to send resolve request: {}", e);
+                ApiError::from(e)
+            })?;
+
+        let status = response.status();
+        tracing::debug!("Received response with status: {}", status);
+
+        if !status.is_success() {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+
+            tracing::error!(
+                "Resource resolution failed: HTTP {} - {}",
+                status.as_u16(),
+                error_body
+            );
+
+            return Err(RunbeamError::Api(ApiError::Http {
+                status: status.as_u16(),
+                message: error_body,
+            }));
+        }
+
+        let resolve_response: crate::runbeam_api::types::ResolveResourceResponse =
+            response.json().await.map_err(|e| {
+                tracing::error!("Failed to parse resolve response: {}", e);
+                ApiError::Parse(format!("Failed to parse response: {}", e))
+            })?;
+
+        tracing::info!(
+            "Resource resolved: {} ({}) from provider {}",
+            resolve_response.data.name,
+            resolve_response.data.resource_type,
+            resolve_response.meta.provider
+        );
+
+        Ok(resolve_response)
+    }
 }
 
 #[cfg(test)]

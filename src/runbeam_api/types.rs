@@ -320,6 +320,316 @@ fn default_auth_type() -> String {
     "jwt".to_string()
 }
 
+fn default_poll_interval() -> u32 {
+    30
+}
+
+// ========================================================================================
+// RESOURCE RESOLUTION TYPES
+// ========================================================================================
+
+/// Response from resolving a resource reference
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolveResourceResponse {
+    /// The resolved resource data
+    pub data: ResolvedResource,
+    /// Resolution metadata
+    pub meta: ResolutionMeta,
+}
+
+/// Metadata about the resolution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolutionMeta {
+    /// Provider that resolved this resource
+    pub provider: String,
+    /// When the resolution occurred
+    pub resolved_at: String,
+}
+
+/// A resolved resource (type varies based on resource type)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedResource {
+    /// Resource type (ingress, egress, pipeline, etc.)
+    #[serde(rename = "type")]
+    pub resource_type: String,
+    /// Resource ID (ULID)
+    pub id: String,
+    /// Resource name
+    pub name: String,
+    /// Team ID
+    #[serde(default)]
+    pub team_id: Option<String>,
+    /// Whether the resource is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Gateway ID (for gateway-scoped resources)
+    #[serde(default)]
+    pub gateway_id: Option<String>,
+    /// Pipeline ID (for pipeline-scoped resources)
+    #[serde(default)]
+    pub pipeline_id: Option<String>,
+    /// Mesh ID (for mesh ingress/egress)
+    #[serde(default)]
+    pub mesh_id: Option<String>,
+    /// URLs (for ingress resources)
+    #[serde(default)]
+    pub urls: Vec<String>,
+    /// Protocol (http, http3, etc.)
+    #[serde(default)]
+    pub protocol: Option<String>,
+    /// Mode (default, mesh)
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Backend ID (for egress resources)
+    #[serde(default)]
+    pub backend_id: Option<String>,
+    /// Service ID (for endpoints/backends)
+    #[serde(default)]
+    pub service_id: Option<String>,
+    /// Endpoint ID (for ingress resources)
+    #[serde(default)]
+    pub endpoint_id: Option<String>,
+    /// Description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Provider (for mesh resources)
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Auth type (for mesh resources)
+    #[serde(default)]
+    pub auth_type: Option<String>,
+}
+
+// ========================================================================================
+// PROVIDER TYPES
+// ========================================================================================
+
+/// Provider configuration for resource resolution
+///
+/// Providers define how resources are resolved - either locally from config files
+/// or remotely from a provider API (e.g., Runbeam Cloud).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderConfig {
+    /// Base URL for provider API. Required for remote providers, omitted for 'local'.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    /// Whether this provider is active
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Polling interval in seconds for change detection
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u32,
+}
+
+impl Default for ProviderConfig {
+    fn default() -> Self {
+        Self {
+            api: None,
+            enabled: true,
+            poll_interval_secs: 30,
+        }
+    }
+}
+
+/// Type of resource being referenced
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResourceType {
+    Ingress,
+    Egress,
+    Pipeline,
+    Endpoint,
+    Backend,
+    Mesh,
+}
+
+impl fmt::Display for ResourceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResourceType::Ingress => write!(f, "ingress"),
+            ResourceType::Egress => write!(f, "egress"),
+            ResourceType::Pipeline => write!(f, "pipeline"),
+            ResourceType::Endpoint => write!(f, "endpoint"),
+            ResourceType::Backend => write!(f, "backend"),
+            ResourceType::Mesh => write!(f, "mesh"),
+        }
+    }
+}
+
+impl std::str::FromStr for ResourceType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "ingress" => Ok(ResourceType::Ingress),
+            "egress" => Ok(ResourceType::Egress),
+            "pipeline" => Ok(ResourceType::Pipeline),
+            "endpoint" => Ok(ResourceType::Endpoint),
+            "backend" => Ok(ResourceType::Backend),
+            "mesh" => Ok(ResourceType::Mesh),
+            _ => Err(format!("Unknown resource type: {}", s)),
+        }
+    }
+}
+
+/// How to look up the resource
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LookupBy {
+    /// Lookup by ULID
+    Id(String),
+    /// Lookup by name
+    Name(String),
+}
+
+/// Parsed resource reference
+///
+/// Supports multiple formats:
+/// - `name` -> local.name.{name}
+/// - `local.name.{name}` -> explicit local lookup
+/// - `{provider}.id.{id}` -> provider-wide ID lookup
+/// - `{provider}.{team}.id.{id}` -> team-scoped ID lookup  
+/// - `{provider}.{team}.{type}.name.{name}` -> full path lookup
+/// - `{provider}.{team}.{type}.id.{id}` -> full path lookup by ID
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceReference {
+    /// Provider name (e.g., "local", "runbeam")
+    pub provider: String,
+    /// Optional team identifier
+    pub team: Option<String>,
+    /// Optional resource type
+    pub resource_type: Option<ResourceType>,
+    /// How to look up the resource
+    pub lookup: LookupBy,
+}
+
+impl ResourceReference {
+    /// Parse a resource reference string
+    ///
+    /// # Examples
+    /// ```
+    /// use runbeam_sdk::runbeam_api::types::ResourceReference;
+    ///
+    /// // Bare name -> local.name.{name}
+    /// let r = ResourceReference::parse("my_ingress").unwrap();
+    /// assert_eq!(r.provider, "local");
+    ///
+    /// // Full path
+    /// let r = ResourceReference::parse("runbeam.acme.ingress.name.patient_api").unwrap();
+    /// assert_eq!(r.provider, "runbeam");
+    /// ```
+    pub fn parse(input: &str) -> Result<Self, String> {
+        let parts: Vec<&str> = input.split('.').collect();
+
+        match parts.len() {
+            // Bare name: "my_ingress" -> local.name.my_ingress
+            1 => Ok(ResourceReference {
+                provider: "local".to_string(),
+                team: None,
+                resource_type: None,
+                lookup: LookupBy::Name(parts[0].to_string()),
+            }),
+
+            // "local.name.{name}" or "{provider}.id.{id}"
+            3 => {
+                let provider = parts[0];
+                match parts[1] {
+                    "name" => Ok(ResourceReference {
+                        provider: provider.to_string(),
+                        team: None,
+                        resource_type: None,
+                        lookup: LookupBy::Name(parts[2].to_string()),
+                    }),
+                    "id" => Ok(ResourceReference {
+                        provider: provider.to_string(),
+                        team: None,
+                        resource_type: None,
+                        lookup: LookupBy::Id(parts[2].to_string()),
+                    }),
+                    _ => Err(format!(
+                        "Invalid reference format: expected 'name' or 'id', got '{}'",
+                        parts[1]
+                    )),
+                }
+            }
+
+            // "{provider}.{team}.id.{id}"
+            4 => {
+                let provider = parts[0];
+                let team = parts[1];
+                match parts[2] {
+                    "id" => Ok(ResourceReference {
+                        provider: provider.to_string(),
+                        team: Some(team.to_string()),
+                        resource_type: None,
+                        lookup: LookupBy::Id(parts[3].to_string()),
+                    }),
+                    _ => Err(format!(
+                        "Invalid reference format: expected 'id' at position 2, got '{}'",
+                        parts[2]
+                    )),
+                }
+            }
+
+            // "{provider}.{team}.{type}.name.{name}" or "{provider}.{team}.{type}.id.{id}"
+            5 => {
+                let provider = parts[0];
+                let team = parts[1];
+                let resource_type: ResourceType = parts[2].parse()?;
+                match parts[3] {
+                    "name" => Ok(ResourceReference {
+                        provider: provider.to_string(),
+                        team: Some(team.to_string()),
+                        resource_type: Some(resource_type),
+                        lookup: LookupBy::Name(parts[4].to_string()),
+                    }),
+                    "id" => Ok(ResourceReference {
+                        provider: provider.to_string(),
+                        team: Some(team.to_string()),
+                        resource_type: Some(resource_type),
+                        lookup: LookupBy::Id(parts[4].to_string()),
+                    }),
+                    _ => Err(format!(
+                        "Invalid reference format: expected 'name' or 'id', got '{}'",
+                        parts[3]
+                    )),
+                }
+            }
+
+            _ => Err(format!(
+                "Invalid reference format: unexpected number of parts ({})",
+                parts.len()
+            )),
+        }
+    }
+
+    /// Check if this reference is for local resolution only
+    pub fn is_local(&self) -> bool {
+        self.provider == "local"
+    }
+
+    /// Convert back to string representation
+    pub fn to_reference_string(&self) -> String {
+        let lookup_str = match &self.lookup {
+            LookupBy::Id(id) => format!("id.{}", id),
+            LookupBy::Name(name) => format!("name.{}", name),
+        };
+
+        match (&self.team, &self.resource_type) {
+            (Some(team), Some(rt)) => format!("{}.{}.{}.{}", self.provider, team, rt, lookup_str),
+            (Some(team), None) => format!("{}.{}.{}", self.provider, team, lookup_str),
+            (None, _) => {
+                // For local with name lookup, can use shorthand
+                if self.provider == "local" {
+                    if let LookupBy::Name(name) = &self.lookup {
+                        return name.clone();
+                    }
+                }
+                format!("{}.{}", self.provider, lookup_str)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,5 +704,115 @@ mod tests {
         assert_eq!(response.data.id, "01k9npa4tatmwddk66xxpcr2r0");
         assert_eq!(response.data.model_type, "gateway");
         assert_eq!(response.data.action, "updated");
+    }
+
+    // ========================================================================================
+    // RESOURCE REFERENCE TESTS
+    // ========================================================================================
+
+    #[test]
+    fn test_resource_reference_bare_name() {
+        let r = ResourceReference::parse("my_ingress").unwrap();
+        assert_eq!(r.provider, "local");
+        assert_eq!(r.team, None);
+        assert_eq!(r.resource_type, None);
+        assert_eq!(r.lookup, LookupBy::Name("my_ingress".to_string()));
+        assert!(r.is_local());
+    }
+
+    #[test]
+    fn test_resource_reference_local_name() {
+        let r = ResourceReference::parse("local.name.fhir_api").unwrap();
+        assert_eq!(r.provider, "local");
+        assert_eq!(r.team, None);
+        assert_eq!(r.resource_type, None);
+        assert_eq!(r.lookup, LookupBy::Name("fhir_api".to_string()));
+        assert!(r.is_local());
+    }
+
+    #[test]
+    fn test_resource_reference_provider_id() {
+        let r = ResourceReference::parse("runbeam.id.01JGXYZ123ABC").unwrap();
+        assert_eq!(r.provider, "runbeam");
+        assert_eq!(r.team, None);
+        assert_eq!(r.resource_type, None);
+        assert_eq!(r.lookup, LookupBy::Id("01JGXYZ123ABC".to_string()));
+        assert!(!r.is_local());
+    }
+
+    #[test]
+    fn test_resource_reference_team_id() {
+        let r = ResourceReference::parse("runbeam.acme.id.01JGXYZ123ABC").unwrap();
+        assert_eq!(r.provider, "runbeam");
+        assert_eq!(r.team, Some("acme".to_string()));
+        assert_eq!(r.resource_type, None);
+        assert_eq!(r.lookup, LookupBy::Id("01JGXYZ123ABC".to_string()));
+    }
+
+    #[test]
+    fn test_resource_reference_full_path_name() {
+        let r = ResourceReference::parse("runbeam.acme_health.ingress.name.patient_api").unwrap();
+        assert_eq!(r.provider, "runbeam");
+        assert_eq!(r.team, Some("acme_health".to_string()));
+        assert_eq!(r.resource_type, Some(ResourceType::Ingress));
+        assert_eq!(r.lookup, LookupBy::Name("patient_api".to_string()));
+    }
+
+    #[test]
+    fn test_resource_reference_full_path_id() {
+        let r = ResourceReference::parse("runbeam.partner_lab.egress.id.01JGXYZ").unwrap();
+        assert_eq!(r.provider, "runbeam");
+        assert_eq!(r.team, Some("partner_lab".to_string()));
+        assert_eq!(r.resource_type, Some(ResourceType::Egress));
+        assert_eq!(r.lookup, LookupBy::Id("01JGXYZ".to_string()));
+    }
+
+    #[test]
+    fn test_resource_reference_all_types() {
+        assert!(ResourceReference::parse("runbeam.t.ingress.name.x").unwrap().resource_type == Some(ResourceType::Ingress));
+        assert!(ResourceReference::parse("runbeam.t.egress.name.x").unwrap().resource_type == Some(ResourceType::Egress));
+        assert!(ResourceReference::parse("runbeam.t.pipeline.name.x").unwrap().resource_type == Some(ResourceType::Pipeline));
+        assert!(ResourceReference::parse("runbeam.t.endpoint.name.x").unwrap().resource_type == Some(ResourceType::Endpoint));
+        assert!(ResourceReference::parse("runbeam.t.backend.name.x").unwrap().resource_type == Some(ResourceType::Backend));
+        assert!(ResourceReference::parse("runbeam.t.mesh.name.x").unwrap().resource_type == Some(ResourceType::Mesh));
+    }
+
+    #[test]
+    fn test_resource_reference_invalid_format() {
+        assert!(ResourceReference::parse("runbeam.team.invalid.name.x").is_err());
+        assert!(ResourceReference::parse("a.b").is_err());
+        assert!(ResourceReference::parse("a.b.c.d.e.f").is_err());
+    }
+
+    #[test]
+    fn test_resource_reference_to_string() {
+        // Bare name shorthand
+        let r = ResourceReference::parse("my_ingress").unwrap();
+        assert_eq!(r.to_reference_string(), "my_ingress");
+
+        // Full path
+        let r = ResourceReference::parse("runbeam.acme.ingress.name.patient_api").unwrap();
+        assert_eq!(r.to_reference_string(), "runbeam.acme.ingress.name.patient_api");
+
+        // Provider ID
+        let r = ResourceReference::parse("runbeam.id.01JGXYZ").unwrap();
+        assert_eq!(r.to_reference_string(), "runbeam.id.01JGXYZ");
+    }
+
+    #[test]
+    fn test_provider_config_default() {
+        let config = ProviderConfig::default();
+        assert_eq!(config.api, None);
+        assert_eq!(config.enabled, true);
+        assert_eq!(config.poll_interval_secs, 30);
+    }
+
+    #[test]
+    fn test_provider_config_serde() {
+        let json = r#"{"api":"https://app.runbeam.io","enabled":true,"poll_interval_secs":60}"#;
+        let config: ProviderConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.api, Some("https://app.runbeam.io".to_string()));
+        assert_eq!(config.enabled, true);
+        assert_eq!(config.poll_interval_secs, 60);
     }
 }
