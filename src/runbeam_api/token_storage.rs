@@ -14,8 +14,6 @@ pub struct MachineToken {
     pub expires_at: String,
     /// Gateway ID
     pub gateway_id: String,
-    /// Gateway code (instance ID)
-    pub gateway_code: String,
     /// Token abilities/permissions
     #[serde(default)]
     pub abilities: Vec<String>,
@@ -29,7 +27,6 @@ impl MachineToken {
         machine_token: String,
         expires_at: String,
         gateway_id: String,
-        gateway_code: String,
         abilities: Vec<String>,
     ) -> Self {
         let issued_at = Utc::now().to_rfc3339();
@@ -38,7 +35,6 @@ impl MachineToken {
             machine_token,
             expires_at,
             gateway_id,
-            gateway_code,
             abilities,
             issued_at,
         }
@@ -103,7 +99,6 @@ impl MachineToken {
 ///     "token123".to_string(),
 ///     "2024-12-01T00:00:00Z".to_string(),
 ///     "gateway-1".to_string(),
-///     "code-1".to_string(),
 ///     vec!["read".to_string()],
 /// );
 /// save_token("harmony", "auth", &machine_token).await?;
@@ -325,7 +320,7 @@ pub async fn save_token_with_key(
     let token_path = "runbeam/auth.json";
     tracing::debug!(
         "Saving machine token with explicit encryption key: gateway={}, instance={}",
-        token.gateway_code,
+        token.gateway_id,
         instance_id
     );
 
@@ -448,13 +443,11 @@ mod tests {
             "test_token".to_string(),
             "2025-12-31T23:59:59Z".to_string(),
             "gw123".to_string(),
-            "gateway-code-123".to_string(),
             vec!["harmony:send".to_string(), "harmony:receive".to_string()],
         );
 
         assert_eq!(token.machine_token, "test_token");
         assert_eq!(token.gateway_id, "gw123");
-        assert_eq!(token.gateway_code, "gateway-code-123");
         assert_eq!(token.abilities.len(), 2);
         assert!(!token.issued_at.is_empty());
     }
@@ -466,7 +459,6 @@ mod tests {
             "test_token".to_string(),
             "2020-01-01T00:00:00Z".to_string(),
             "gw123".to_string(),
-            "gateway-code-123".to_string(),
             vec![],
         );
         assert!(expired_token.is_expired());
@@ -477,7 +469,6 @@ mod tests {
             "test_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw123".to_string(),
-            "gateway-code-123".to_string(),
             vec![],
         );
         assert!(!valid_token.is_expired());
@@ -490,14 +481,12 @@ mod tests {
             "test_token".to_string(),
             "2025-12-31T23:59:59Z".to_string(),
             "gw123".to_string(),
-            "gateway-code-123".to_string(),
             vec!["harmony:send".to_string()],
         );
 
         let json = serde_json::to_string(&token).unwrap();
         assert!(json.contains("\"machine_token\":\"test_token\""));
         assert!(json.contains("\"gateway_id\":\"gw123\""));
-        assert!(json.contains("\"gateway_code\":\"gateway-code-123\""));
 
         // Deserialize and verify
         let deserialized: MachineToken = serde_json::from_str(&json).unwrap();
@@ -517,7 +506,6 @@ mod tests {
             "test_token_secure".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_test".to_string(),
-            "test-gateway".to_string(),
             vec!["harmony:send".to_string()],
         );
 
@@ -531,7 +519,6 @@ mod tests {
         let loaded_token = loaded.unwrap();
         assert_eq!(loaded_token.machine_token, token.machine_token);
         assert_eq!(loaded_token.gateway_id, token.gateway_id);
-        assert_eq!(loaded_token.gateway_code, token.gateway_code);
         assert!(loaded_token.is_valid());
 
         // Cleanup
@@ -563,7 +550,6 @@ mod tests {
             "test_clear".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_clear".to_string(),
-            "clear-test".to_string(),
             vec![],
         );
 
@@ -601,7 +587,6 @@ mod tests {
             "expired_token".to_string(),
             "2020-01-01T00:00:00Z".to_string(),
             "gw_expired".to_string(),
-            "expired-gateway".to_string(),
             vec![],
         );
 
@@ -631,7 +616,6 @@ mod tests {
             "token_with_abilities".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_abilities".to_string(),
-            "abilities-test".to_string(),
             vec![
                 "harmony:send".to_string(),
                 "harmony:receive".to_string(),
@@ -663,7 +647,6 @@ mod tests {
             "first_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_first".to_string(),
-            "first-gateway".to_string(),
             vec![],
         );
         save_machine_token(instance_id, &token1).await.unwrap();
@@ -673,7 +656,6 @@ mod tests {
             "second_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_second".to_string(),
-            "second-gateway".to_string(),
             vec![],
         );
         save_machine_token(instance_id, &token2).await.unwrap();
@@ -682,7 +664,6 @@ mod tests {
         let loaded = load_machine_token(instance_id).await.unwrap().unwrap();
         assert_eq!(loaded.machine_token, "second_token");
         assert_eq!(loaded.gateway_id, "gw_second");
-        assert_eq!(loaded.gateway_code, "second-gateway");
 
         // Cleanup
         clear_machine_token(instance_id).await.unwrap();
@@ -701,7 +682,6 @@ mod tests {
             "super_secret_token_12345".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_secret".to_string(),
-            "secret-gateway".to_string(),
             vec!["harmony:admin".to_string()],
         );
 
@@ -744,11 +724,6 @@ mod tests {
             raw_string
         );
         assert!(
-            !raw_string.contains("secret-gateway"),
-            "Token file should NOT contain plaintext gateway_code: {}",
-            raw_string
-        );
-        assert!(
             !raw_string.contains("harmony:admin"),
             "Token file should NOT contain plaintext abilities: {}",
             raw_string
@@ -785,7 +760,6 @@ mod tests {
             "test_token_json".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_json".to_string(),
-            "json-test".to_string(),
             vec![],
         );
 
@@ -826,7 +800,6 @@ mod tests {
             "comparison_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_compare".to_string(),
-            "compare-gateway".to_string(),
             vec!["test:ability".to_string()],
         );
 
@@ -873,7 +846,6 @@ mod tests {
             "token_instance_1".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_1".to_string(),
-            "gateway-1".to_string(),
             vec![],
         );
 
@@ -881,7 +853,6 @@ mod tests {
             "token_instance_2".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_2".to_string(),
-            "gateway-2".to_string(),
             vec![],
         );
 
@@ -937,9 +908,9 @@ mod tests {
         let loaded2: MachineToken = serde_json::from_slice(&decrypted2).unwrap();
 
         assert_eq!(loaded1.machine_token, "token_instance_1");
-        assert_eq!(loaded1.gateway_code, "gateway-1");
+        assert_eq!(loaded1.gateway_id, "gw_1");
         assert_eq!(loaded2.machine_token, "token_instance_2");
-        assert_eq!(loaded2.gateway_code, "gateway-2");
+        assert_eq!(loaded2.gateway_id, "gw_2");
     }
 
     #[tokio::test]
@@ -993,7 +964,6 @@ mod tests {
             "original_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_tamper".to_string(),
-            "tamper-test".to_string(),
             vec![],
         );
 
@@ -1080,7 +1050,6 @@ mod tests {
             "machine_token".to_string(),
             "2099-12-31T23:59:59Z".to_string(),
             "gw_test".to_string(),
-            "test-gw".to_string(),
             vec![],
         );
 
