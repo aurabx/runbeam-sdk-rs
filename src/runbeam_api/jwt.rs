@@ -458,8 +458,7 @@ pub async fn validate_jwt_token(
     })?;
 
     // Step 1a: Validate algorithm against allowed list
-    let allowed_algorithms = options.algorithms.as_ref()
-        .map(|algs| algs.as_slice())
+    let allowed_algorithms = options.algorithms.as_deref()
         .unwrap_or(&[Algorithm::RS256]);
     
     if !allowed_algorithms.contains(&header.alg) {
@@ -517,8 +516,7 @@ pub async fn validate_jwt_token(
 
     // Step 3: Get decoding key from cache or JWKS
     // If explicit JWKS URI provided, use that instead of auto-discovery
-    let jwks_url = options.jwks_uri.as_ref()
-        .map(|uri| uri.as_str())
+    let jwks_url = options.jwks_uri.as_deref()
         .unwrap_or(&base_url);
     
     let cache_duration = Duration::from_secs(options.jwks_cache_duration_hours * 3600);
@@ -607,7 +605,7 @@ pub async fn validate_jwt_token(
             .map_err(|e| RunbeamError::JwtValidation(format!("Failed to serialize claims: {}", e)))?;
         
         for required_claim in required_claims {
-            if !claims_json.get(required_claim).is_some() {
+            if claims_json.get(required_claim).is_none() {
                 return Err(RunbeamError::JwtValidation(format!(
                     "Required claim '{}' is missing from JWT",
                     required_claim
