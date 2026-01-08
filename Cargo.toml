@@ -1,6 +1,6 @@
 [package]
 name = "runbeam-sdk"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 description = "Rust SDK for integrating with the Runbeam Cloud API, providing JWT validation, API client, and generic secure token storage"
 license = "Apache-2.0"

@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-01-08
+
+### Added
+
+- **Provider Resolution Support**
+  - Added `ResourceReference` type for parsing and handling provider-based resource references (e.g., `runbeam.acme.ingress.name.patient_api`)
+  - Added `ResolveResourceResponse` and `ResolvedResource` types for resource resolution responses
+  - Added `ResolutionMeta` type for tracking resolution metadata (provider, timestamp)
+  - Added `ResourceType` enum supporting: Ingress, Egress, Pipeline, Endpoint, Backend, Mesh
+  - Added `LookupBy` enum for ID-based or name-based resource lookup
+  - Added `ProviderConfig` type with configurable API endpoint, enabled flag, and poll interval
+  - Added `RunbeamClient::resolve_reference()` method to resolve provider-based resource references via `/harmony/resources/resolve` endpoint
+  - Added support for multiple reference formats:
+    - Bare name: `my_ingress` (resolves to `local.name.my_ingress`)
+    - Local name: `local.name.fhir_api`
+    - Provider ID: `runbeam.id.01JGXYZ123ABC`
+    - Team ID: `runbeam.acme.id.01JGXYZ123ABC`
+    - Full path name: `runbeam.acme_health.ingress.name.patient_api`
+    - Full path ID: `runbeam.partner_lab.egress.id.01JGXYZ`
+
+- **Enhanced Token Storage**
+  - Added support for raw age encryption keys (format: `AGE-SECRET-KEY-...`) in addition to base64-encoded keys
+  - Storage now attempts direct age key parsing first, then falls back to base64 decoding
+  - Backward compatible with existing base64-encoded encryption keys
+
+- **Development Features**
+  - Added `RUNBEAM_ACCEPT_INVALID_CERTS` environment variable for accepting invalid TLS certificates in development environments
+  - Configurable via environment variable (dev/test use only)
+
+### Changed
+
+- **Breaking: MachineToken Structure**
+  - Removed `gateway_code` field from `MachineToken` struct
+  - Updated `MachineToken::new()` constructor to accept 4 parameters instead of 5 (removed `gateway_code`)
+  - Machine tokens now store only `gateway_id` for gateway identification
+  - **Migration**: Update all `MachineToken::new()` calls to remove the `gateway_code` parameter
+
+### Fixed
+
+- Fixed doctest examples in `src/lib.rs` to use updated `MachineToken::new()` signature
+- Improved encryption key loading error messages and fallback behavior
+
 ## [0.10.0] - 2025-12-30
 
 ### Added
@@ -298,6 +340,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Error handling with `RunbeamError` and `ApiError` types
 - Storage abstraction with `KeyringStorage` and `FilesystemStorage` implementations
 
+[0.11.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/aurabx/runbeam-sdk-rs/compare/v0.8.0...v0.9.0
