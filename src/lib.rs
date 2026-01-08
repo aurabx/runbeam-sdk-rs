@@ -58,7 +58,6 @@
 //!     response.machine_token,
 //!     response.expires_at,
 //!     response.gateway.id,
-//!     response.gateway.code,
 //!     response.abilities,
 //! );
 //! save_machine_token("harmony", &machine_token).await?;
@@ -92,7 +91,6 @@
 //!     response.machine_token,
 //!     response.expires_at,
 //!     response.gateway.id,
-//!     response.gateway.code,
 //!     response.abilities,
 //! );
 //! save_machine_token("harmony", &machine_token).await?;
@@ -132,7 +130,9 @@ pub use runbeam_api::{
         MachineToken,
     },
     types::{
-        ApiError, AuthorizeResponse, GatewayInfo, RunbeamError, StoreConfigRequest,
-        StoreConfigResponse, TeamInfo, UserInfo, UserToken,
+        ApiError, AuthorizeResponse, GatewayInfo, LookupBy, ProviderConfig,
+        ResolveResourceResponse, ResolutionMeta, ResolvedResource, ResourceReference,
+        ResourceType, RunbeamError, StoreConfigRequest, StoreConfigResponse, TeamInfo, UserInfo,
+        UserToken,
     },
 };
